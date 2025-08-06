@@ -34,7 +34,7 @@ type WhatsAppService struct {
 func NewWhatsAppService() *WhatsAppService {
     return &WhatsAppService{
         apiURL:        "https://graph.facebook.com",
-        apiVersion:    "v18.0",
+        apiVersion: "v22.0",
         accessToken:   os.Getenv("WHATSAPP_ACCESS_TOKEN"),
         phoneNumberID: os.Getenv("WHATSAPP_PHONE_NUMBER_ID"),
         businessID:    os.Getenv("WHATSAPP_BUSINESS_ID"),
