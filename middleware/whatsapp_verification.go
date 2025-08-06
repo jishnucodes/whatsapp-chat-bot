@@ -43,6 +43,7 @@ func VerifyWhatsAppSignature() gin.HandlerFunc {
         
         c.Next()
     }
+    
 }
 
 func calculateHMAC(data []byte, secret string) string {
