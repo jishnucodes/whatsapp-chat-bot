@@ -2,13 +2,15 @@
 package controllers
 
 import (
-    "context"
-    "fmt"
-    "net/http"
-    
-    "github.com/gin-gonic/gin"
-    "clinic-chatbot-backend/models"
-    "clinic-chatbot-backend/services"
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+
+	"clinic-chatbot-backend/models"
+	"clinic-chatbot-backend/services"
+
+	"github.com/gin-gonic/gin"
 )
 
 type WhatsAppController struct {
@@ -58,6 +60,7 @@ func (wc *WhatsAppController) HandleWebhook(c *gin.Context) {
 
 // processWebhookData processes the webhook data
 func (wc *WhatsAppController) processWebhookData(ctx context.Context, webhookData models.WhatsAppWebhookData) {
+    log.Println("webhook data", webhookData)
     for _, entry := range webhookData.Entry {
         for _, change := range entry.Changes {
             if change.Field == "messages" {
@@ -69,6 +72,7 @@ func (wc *WhatsAppController) processWebhookData(ctx context.Context, webhookDat
 
 // processMessages handles incoming messages
 func (wc *WhatsAppController) processMessages(ctx context.Context, value models.WhatsAppValue) {
+    log.Println("values:", value.Messages, value.Statuses)
     // Process each message
     for _, message := range value.Messages {
         wc.handleIncomingMessage(ctx, message, value.Metadata)
@@ -84,6 +88,8 @@ func (wc *WhatsAppController) processMessages(ctx context.Context, value models.
 func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message models.WhatsAppMessage, metadata models.WhatsAppMetadata) {
     var messageText string
     var isInteractive bool
+
+    log.Println("message", message)
     
     // Extract message content based on type
     switch message.Type {
