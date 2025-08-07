@@ -30,6 +30,10 @@ func (wc *WhatsAppController) VerifyWebhook(c *gin.Context) {
     mode := c.Query("hub.mode")
     token := c.Query("hub.verify_token")
     challenge := c.Query("hub.challenge")
+
+    log.Println("token from whatsApp: ", token)
+    log.Println("mode from whatsApp: ", mode)
+    log.Println("challenge from whatsApp: ", challenge)
     
     if mode == "subscribe" && token == wc.whatsappService.GetVerifyToken() {
         c.String(http.StatusOK, challenge)
