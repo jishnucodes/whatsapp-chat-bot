@@ -3,6 +3,7 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -88,70 +89,97 @@ func (wc *WhatsAppController) processMessages(ctx context.Context, value models.
     }
 }
 
-// handleIncomingMessage processes a single incoming message
-func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message models.WhatsAppMessage, metadata models.WhatsAppMetadata) {
-    var messageText string
-    var isInteractive bool
 
+func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message models.WhatsAppMessage, metadata models.WhatsAppMetadata) {
     log.Println("message", message)
     
-    // Extract message content based on type
-    switch message.Type {
-    case "text":
-        if message.Text != nil {
-            messageText = message.Text.Body
-        }
-        
-    case "interactive":
-        isInteractive = true
-        if message.Interactive != nil {
-            if message.Interactive.ListReply != nil {
-                messageText = message.Interactive.ListReply.ID
-            } else if message.Interactive.ButtonReply != nil {
-                messageText = message.Interactive.ButtonReply.ID
-            }
-        }
-        
-    case "button":
-        if message.Button != nil {
-            messageText = message.Button.ID
-        }
-        
-    default:
-        // Send unsupported message type response
-        wc.whatsappService.SendTextMessage(message.From, 
-            "Sorry, I can only process text and interactive messages at the moment.")
-        return
+    response := map[string]interface{}{
+        "status":  "success",
+        "message": "Hello from WhatsApp Webhook!",
+        "from":    message.From,
+        "id":      message.ID,
     }
-    
-    // Create chat request
-    chatRequest := models.ChatRequest{
-        Message:   messageText,
-        SessionID: fmt.Sprintf("whatsapp_%s", message.From),
-        UserID:    message.From,
-        Channel:   models.ChannelWhatsApp,
-        Metadata: map[string]interface{}{
-            "whatsapp_message_id": message.ID,
-            "timestamp":          message.Timestamp,
-            "phone_number":       message.From,
-            "is_interactive":     isInteractive,
-        },
-    }
-    
-    // Process through chatbot service
-    response, err := wc.chatbotService.ProcessMessage(ctx, chatRequest)
+
+    log.Println("response: ", response)
+
+    jsonBytes, err := json.Marshal(response)
     if err != nil {
-        wc.whatsappService.SendTextMessage(message.From, 
-            "Sorry, I couldn't process your message. Please try again or contact our support.")
+        log.Printf("Error marshaling JSON: %v", err)
         return
     }
-    
-    // Send response
-    if err := wc.sendResponse(message.From, response); err != nil {
-        // Log error but don't send error message to avoid loops
-        fmt.Printf("Failed to send WhatsApp response: %v\n", err)
-    }
+
+    log.Println("josn response", string(jsonBytes))
+
+    // Send the JSON string back as a WhatsApp text message
+    wc.whatsappService.SendTextMessage(message.From, string(jsonBytes))
 }
+
+// handleIncomingMessage processes a single incoming message
+// func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message models.WhatsAppMessage, metadata models.WhatsAppMetadata) {
+//     var messageText string
+//     var isInteractive bool
+
+//     log.Println("message", message)
+
+    
+    
+//     // Extract message content based on type
+//     switch message.Type {
+//     case "text":
+//         if message.Text != nil {
+//             messageText = message.Text.Body
+//         }
+        
+//     case "interactive":
+//         isInteractive = true
+//         if message.Interactive != nil {
+//             if message.Interactive.ListReply != nil {
+//                 messageText = message.Interactive.ListReply.ID
+//             } else if message.Interactive.ButtonReply != nil {
+//                 messageText = message.Interactive.ButtonReply.ID
+//             }
+//         }
+        
+//     case "button":
+//         if message.Button != nil {
+//             messageText = message.Button.ID
+//         }
+        
+//     default:
+//         // Send unsupported message type response
+//         wc.whatsappService.SendTextMessage(message.From, 
+//             "Sorry, I can only process text and interactive messages at the moment.")
+//         return
+//     }
+    
+//     // Create chat request
+//     chatRequest := models.ChatRequest{
+//         Message:   messageText,
+//         SessionID: fmt.Sprintf("whatsapp_%s", message.From),
+//         UserID:    message.From,
+//         Channel:   models.ChannelWhatsApp,
+//         Metadata: map[string]interface{}{
+//             "whatsapp_message_id": message.ID,
+//             "timestamp":          message.Timestamp,
+//             "phone_number":       message.From,
+//             "is_interactive":     isInteractive,
+//         },
+//     }
+    
+//     // Process through chatbot service
+//     response, err := wc.chatbotService.ProcessMessage(ctx, chatRequest)
+//     if err != nil {
+//         wc.whatsappService.SendTextMessage(message.From, 
+//             "Sorry, I couldn't process your message. Please try again or contact our support.")
+//         return
+//     }
+    
+//     // Send response
+//     if err := wc.sendResponse(message.From, response); err != nil {
+//         // Log error but don't send error message to avoid loops
+//         fmt.Printf("Failed to send WhatsApp response: %v\n", err)
+//     }
+// }
 
 // sendResponse sends the chatbot response via WhatsApp
 func (wc *WhatsAppController) sendResponse(to string, response *models.ChatResponse) error {
