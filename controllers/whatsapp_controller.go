@@ -198,9 +198,9 @@ func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message
 		case "help_plant_care":
 			apiResponse = wc.callExternalAPI("https://jsonplaceholder.typicode.com/posts")
 		case "help_landscaping":
-			apiResponse = wc.callExternalAPI(ctx, "https://example.com/api/landscaping")
+			apiResponse = wc.callExternalAPI("https://example.com/api/landscaping")
 		case "help_contact":
-			apiResponse = wc.callExternalAPI(ctx, "https://example.com/api/contact")
+			apiResponse = wc.callExternalAPI("https://example.com/api/contact")
 		default:
 			apiResponse = "❓ Sorry, I didn’t understand that option."
 		}
