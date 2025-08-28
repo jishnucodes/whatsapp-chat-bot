@@ -209,7 +209,7 @@ func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message
 		default:
 			apiResponse = "❓ Sorry, I didn’t understand that option."
 		}
-
+        log.Println("apiResponse: ", apiResponse)
 		if apiResponse != "" {
 			_ = wc.whatsappService.SendTextMessage(message.From, apiResponse)
 		}
