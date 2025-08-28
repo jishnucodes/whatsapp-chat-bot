@@ -3,7 +3,9 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"io"
+
 	// "encoding/json"
 	"fmt"
 	"log"
@@ -28,6 +30,12 @@ func NewWhatsAppController(whatsappService *services.WhatsAppService, chatbotSer
 	}
 }
 
+type Post struct {
+    UserID int    `json:"userId"`
+    ID     int    `json:"id"`
+    Title  string `json:"title"`
+    Body   string `json:"body"`
+}
 
 func (wc *WhatsAppController) callExternalAPI(url string) string {
     req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
@@ -49,7 +57,18 @@ func (wc *WhatsAppController) callExternalAPI(url string) string {
         return "⚠️ Error reading response."
     }
 
-    return string(body)
+    // Unmarshal into slice of posts
+    var posts []Post
+    if err := json.Unmarshal(body, &posts); err != nil {
+        log.Printf("Failed to parse API response: %v", err)
+        return "⚠️ Error parsing response."
+    }
+
+    if len(posts) > 0 {
+        return posts[0].Body // ✅ just return the body field
+    }
+
+    return "⚠️ No data found."
 }
 
 
