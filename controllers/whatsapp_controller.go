@@ -29,34 +29,29 @@ func NewWhatsAppController(whatsappService *services.WhatsAppService, chatbotSer
 }
 
 
-func (wc *WhatsAppController) callExternalAPI(ctx context.Context, url string) string {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		log.Printf("Failed to build API request: %v", err)
-		return "⚠️ Something went wrong. Please try again."
-	}
+func (wc *WhatsAppController) callExternalAPI(url string) string {
+    req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+    if err != nil {
+        log.Printf("Failed to build API request: %v", err)
+        return "⚠️ Something went wrong. Please try again."
+    }
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		log.Printf("API request failed: %v", err)
-		return "⚠️ Could not reach our service right now."
-	}
-	defer resp.Body.Close()
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        log.Printf("API request failed: %v", err)
+        return "⚠️ Could not reach our service right now."
+    }
+    defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		log.Printf("API returned non-200: %v", resp.Status)
-		return "⚠️ Service is temporarily unavailable."
-	}
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        log.Printf("Failed to read API response: %v", err)
+        return "⚠️ Error reading response."
+    }
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Printf("Failed to read API response: %v", err)
-		return "⚠️ Error reading response."
-	}
-
-	// Example: return plain text
-	return string(body)
+    return string(body)
 }
+
 
 
 // VerifyWebhook handles the webhook verification request from WhatsApp
@@ -201,7 +196,7 @@ func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message
 		// Example: Call another API based on button ID
 		switch buttonID {
 		case "help_plant_care":
-			apiResponse = wc.callExternalAPI(ctx, "https://jsonplaceholder.typicode.com/posts")
+			apiResponse = wc.callExternalAPI("https://jsonplaceholder.typicode.com/posts")
 		case "help_landscaping":
 			apiResponse = wc.callExternalAPI(ctx, "https://example.com/api/landscaping")
 		case "help_contact":
