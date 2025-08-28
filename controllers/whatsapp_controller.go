@@ -3,10 +3,11 @@ package controllers
 
 import (
 	"context"
-	"encoding/json"
+	// "encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 
 	"clinic-chatbot-backend/models"
 	"clinic-chatbot-backend/services"
@@ -91,28 +92,98 @@ func (wc *WhatsAppController) processMessages(ctx context.Context, value models.
 
 
 func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message models.WhatsAppMessage, metadata models.WhatsAppMetadata) {
-    log.Println("message", message)
-    
-    response := map[string]interface{}{
-        "status":  "success",
-        "message": "Hello from WhatsApp Webhook!",
-        "from":    message.From,
-        "id":      message.ID,
-    }
+	log.Println("Incoming message:", message.Type)
 
-    log.Println("response: ", response)
+	// Check if it's a text message
+	if message.Type == "text" && message.Text != nil {
+		userText := strings.TrimSpace(strings.ToLower(message.Text.Body))
+		if userText == "hi" || userText == "hello" {
+			// Send interactive buttons instead of plain text
+			interactive := &models.InteractiveMessage{
+				Type:   "button",
+				Body:   "Hi! How can we help you today?",
+				Footer: "Sanitas Landscaping",
+				Action: &models.InteractiveAction{
+					Buttons: []models.InteractiveButton{
+						{
+							Type: "reply",
+							Reply: &models.ButtonReply{
+								ID:    "help_plant_care",
+								Title: "Plant Care",
+							},
+						},
+						{
+							Type: "reply",
+							Reply: &models.ButtonReply{
+								ID:    "help_landscaping",
+								Title: "Landscaping",
+							},
+						},
+						{
+							Type: "reply",
+							Reply: &models.ButtonReply{
+								ID:    "help_contact",
+								Title: "Contact Us",
+							},
+						},
+					},
+				},
+			}
 
-    jsonBytes, err := json.Marshal(response)
-    if err != nil {
-        log.Printf("Error marshaling JSON: %v", err)
-        return
-    }
+			if err := wc.whatsappService.SendInteractiveMessage(message.From, interactive); err != nil {
+				log.Printf("Failed to send interactive message: %v", err)
+			}
+			return
+		}
+	}
 
-    log.Println("josn response", string(jsonBytes))
+	// Fallback: normal handling (like buttons or text responses)
+	var response string
+	switch message.Type {
+	case "interactive":
+		if message.Interactive != nil && message.Interactive.ButtonReply != nil {
+			switch message.Interactive.ButtonReply.ID {
+			case "help_plant_care":
+				response = "🌱 We can help you with plant care tips."
+			case "help_landscaping":
+				response = "🌿 Let’s discuss landscaping ideas."
+			case "help_contact":
+				response = "📞 Contact us at +91-98765-43210."
+			default:
+				response = "❓ Sorry, I didn’t understand that option."
+			}
+		}
+	}
 
-    // Send the JSON string back as a WhatsApp text message
-    wc.whatsappService.SendTextMessage(message.From, string(jsonBytes))
+	if response != "" {
+		_ = wc.whatsappService.SendTextMessage(message.From, response)
+	}
 }
+
+
+// func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message models.WhatsAppMessage, metadata models.WhatsAppMetadata) {
+//     log.Println("message", message)
+    
+//     response := map[string]interface{}{
+//         "status":  "success",
+//         "message": "Hello from WhatsApp Webhook!",
+//         "from":    message.From,
+//         "id":      message.ID,
+//     }
+
+//     log.Println("response: ", response)
+
+//     jsonBytes, err := json.Marshal(response)
+//     if err != nil {
+//         log.Printf("Error marshaling JSON: %v", err)
+//         return
+//     }
+
+//     log.Println("josn response", string(jsonBytes))
+
+//     // Send the JSON string back as a WhatsApp text message
+//     wc.whatsappService.SendTextMessage(message.From, string(jsonBytes))
+// }
 
 // handleIncomingMessage processes a single incoming message
 // func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message models.WhatsAppMessage, metadata models.WhatsAppMetadata) {
