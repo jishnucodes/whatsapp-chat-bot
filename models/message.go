@@ -77,13 +77,33 @@ type Action struct {
 }
 
 // InteractiveMessage for WhatsApp interactive messages
+// type InteractiveMessage struct {
+//     Type    string              `json:"type"` // "list" or "button"
+//     Header  *MessageHeader      `json:"header,omitempty"`
+//     Body    string              `json:"body"`
+//     Footer  string              `json:"footer,omitempty"`
+//     Action  *InteractiveAction  `json:"action"`
+// }
+
+// InteractiveMessage for WhatsApp interactive messages
 type InteractiveMessage struct {
-    Type    string              `json:"type"` // "list" or "button"
-    Header  *MessageHeader      `json:"header,omitempty"`
-    Body    string              `json:"body"`
-    Footer  string              `json:"footer,omitempty"`
-    Action  *InteractiveAction  `json:"action"`
+    Type   string             `json:"type"` // "list" or "button"
+    Header *MessageHeader     `json:"header,omitempty"`
+    Body   *InteractiveBody   `json:"body"`              // must be object
+    Footer *InteractiveFooter `json:"footer,omitempty"`  // must be object
+    Action *InteractiveAction `json:"action"`
 }
+
+// WhatsApp interactive body
+type InteractiveBody struct {
+    Text string `json:"text"`
+}
+
+// WhatsApp interactive footer
+type InteractiveFooter struct {
+    Text string `json:"text"`
+}
+
 
 type MessageHeader struct {
     Type  string `json:"type"` // "text", "image", "video", "document"
@@ -253,6 +273,8 @@ type ServiceInfo struct {
     Duration    int     `json:"duration"` // in minutes
     Price       float64 `json:"price"`
 }
+
+
 
 // Helper function to convert Action to WhatsApp format
 func (a Action) ToWhatsAppButton() InteractiveButton {
