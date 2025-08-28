@@ -3,6 +3,7 @@ package controllers
 
 import (
 	"context"
+	"io"
 	// "encoding/json"
 	"fmt"
 	"log"
@@ -26,6 +27,37 @@ func NewWhatsAppController(whatsappService *services.WhatsAppService, chatbotSer
 		chatbotService:  chatbotService,
 	}
 }
+
+
+func (wc *WhatsAppController) callExternalAPI(ctx context.Context, url string) string {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		log.Printf("Failed to build API request: %v", err)
+		return "⚠️ Something went wrong. Please try again."
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Printf("API request failed: %v", err)
+		return "⚠️ Could not reach our service right now."
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("API returned non-200: %v", resp.Status)
+		return "⚠️ Service is temporarily unavailable."
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Failed to read API response: %v", err)
+		return "⚠️ Error reading response."
+	}
+
+	// Example: return plain text
+	return string(body)
+}
+
 
 // VerifyWebhook handles the webhook verification request from WhatsApp
 func (wc *WhatsAppController) VerifyWebhook(c *gin.Context) {
@@ -141,25 +173,46 @@ func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message
 	}
 
 	// Fallback: normal handling (like buttons or text responses)
-	var response string
-	switch message.Type {
-	case "interactive":
-		if message.Interactive != nil && message.Interactive.ButtonReply != nil {
-			switch message.Interactive.ButtonReply.ID {
-			case "help_plant_care":
-				response = "🌱 We can help you with plant care tips."
-			case "help_landscaping":
-				response = "🌿 Let’s discuss landscaping ideas."
-			case "help_contact":
-				response = "📞 Contact us at +91-98765-43210."
-			default:
-				response = "❓ Sorry, I didn’t understand that option."
-			}
-		}
-	}
+	// var response string
+	// switch message.Type {
+	// case "interactive":
+	// 	if message.Interactive != nil && message.Interactive.ButtonReply != nil {
+	// 		switch message.Interactive.ButtonReply.ID {
+	// 		case "help_plant_care": 
+	// 			response = "🌱 We can help you with plant care tips."
+	// 		case "help_landscaping":
+	// 			response = "🌿 Let’s discuss landscaping ideas."
+	// 		case "help_contact":
+	// 			response = "📞 Contact us at +91-98765-43210."
+	// 		default:
+	// 			response = "❓ Sorry, I didn’t understand that option."
+	// 		}
+	// 	}
+	// }
 
-	if response != "" {
-		_ = wc.whatsappService.SendTextMessage(message.From, response)
+	// if response != "" {
+	// 	_ = wc.whatsappService.SendTextMessage(message.From, response)
+	// }
+
+    if message.Type == "interactive" && message.Interactive != nil && message.Interactive.ButtonReply != nil {
+		buttonID := message.Interactive.ButtonReply.ID
+		var apiResponse string
+
+		// Example: Call another API based on button ID
+		switch buttonID {
+		case "help_plant_care":
+			apiResponse = wc.callExternalAPI(ctx, "https://jsonplaceholder.typicode.com/posts")
+		case "help_landscaping":
+			apiResponse = wc.callExternalAPI(ctx, "https://example.com/api/landscaping")
+		case "help_contact":
+			apiResponse = wc.callExternalAPI(ctx, "https://example.com/api/contact")
+		default:
+			apiResponse = "❓ Sorry, I didn’t understand that option."
+		}
+
+		if apiResponse != "" {
+			_ = wc.whatsappService.SendTextMessage(message.From, apiResponse)
+		}
 	}
 }
 
