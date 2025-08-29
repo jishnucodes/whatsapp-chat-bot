@@ -418,7 +418,7 @@ func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message
 
                 case "new_appointment":
                    wc.handleNewAppointment(ctx, userID, message)
-                    _ = wc.sendMainMenu(userID)
+                    // _ = wc.sendMainMenu(userID)
                     return
 
                 case "contact_us":
