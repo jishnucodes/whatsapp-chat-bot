@@ -360,7 +360,7 @@ func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message
     }
 
     // ✅ Before anything else, check if user is in appointment flow
-    if state, exists := appointmentState[userID]; exists {
+    if _, exists := appointmentState[userID]; exists {
         wc.handleNewAppointment(ctx, userID, message)
         return
     }
