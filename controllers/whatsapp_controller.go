@@ -208,26 +208,101 @@ func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message
 	// 	_ = wc.whatsappService.SendTextMessage(message.From, response)
 	// }
 
-    if message.Type == "interactive" && message.Interactive != nil && message.Interactive.ButtonReply != nil {
-		buttonID := message.Interactive.ButtonReply.ID
-		var apiResponse string
+    // if message.Type == "interactive" && message.Interactive != nil && message.Interactive.ButtonReply != nil {
+	// 	buttonID := message.Interactive.ButtonReply.ID
+	// 	var apiResponse string
 
-		// Example: Call another API based on button ID
-		switch buttonID {
-		case "help_plant_care":
-			apiResponse = wc.callExternalAPI("https://jsonplaceholder.typicode.com/posts")
-		case "help_landscaping":
-			apiResponse = wc.callExternalAPI("https://example.com/api/landscaping")
-		case "help_contact":
-			apiResponse = wc.callExternalAPI("https://example.com/api/contact")
-		default:
-			apiResponse = "❓ Sorry, I didn’t understand that option."
-		}
-        log.Println("apiResponse: ", apiResponse)
-		if apiResponse != "" {
-			_ = wc.whatsappService.SendTextMessage(message.From, apiResponse)
-		}
-	}
+	// 	// Example: Call another API based on button ID
+	// 	switch buttonID {
+	// 	case "help_plant_care":
+	// 		apiResponse = wc.callExternalAPI("https://jsonplaceholder.typicode.com/posts")
+	// 	case "help_landscaping":
+	// 		apiResponse = wc.callExternalAPI("https://example.com/api/landscaping")
+	// 	case "help_contact":
+	// 		apiResponse = wc.callExternalAPI("https://example.com/api/contact")
+	// 	default:
+	// 		apiResponse = "❓ Sorry, I didn’t understand that option."
+	// 	}
+    //     log.Println("apiResponse: ", apiResponse)
+	// 	if apiResponse != "" {
+	// 		_ = wc.whatsappService.SendTextMessage(message.From, apiResponse)
+	// 	}
+	// }
+
+
+	// Fallback: handle interactive responses
+    var response string
+    if message.Type == "interactive" && message.Interactive != nil {
+        // Handle button replies
+        if message.Interactive.ButtonReply != nil {
+            switch message.Interactive.ButtonReply.ID {
+            case "help_plant_care":
+                response = "🌱 We can help you with plant care tips."
+
+            case "help_landscaping":
+                // Show LIST menu instead of simple text
+                listMenu := &models.InteractiveMessage{
+                    Type: "list",
+                    Header: &models.MessageHeader{
+                        Type: "text",
+                        Text: "Landscaping Services",
+                    },
+                    Body: &models.InteractiveBody{
+                        Text: "Please select an option:",
+                    },
+                    Footer: &models.InteractiveFooter{
+                        Text: "Tap to choose",
+                    },
+                    Action: &models.InteractiveAction{
+                        Button: "View Options",
+                        Sections: []models.Section{
+                            {
+                                Title: "Landscaping Menu",
+                                Rows: []models.ListItem{
+                                    {ID: "design_garden", Title: "Garden Design"},
+                                    {ID: "install_lawn", Title: "Install Lawn"},
+                                    {ID: "outdoor_lighting", Title: "Outdoor Lighting"},
+                                    {ID: "water_features", Title: "Water Features"},
+                                },
+                            },
+                        },
+                    },
+                }
+
+                if err := wc.whatsappService.SendInteractiveMessage(message.From, listMenu); err != nil {
+                    log.Printf("Failed to send list menu: %v", err)
+                }
+                return // stop here, don’t send plain text
+
+            case "help_contact":
+                response = "📞 Contact us at +91-98765-43210."
+
+            default:
+                response = "❓ Sorry, I didn’t understand that option."
+            }
+        }
+
+        // Handle list menu replies
+        if message.Interactive.ListReply != nil {
+            switch message.Interactive.ListReply.ID {
+            case "design_garden":
+                response = "🌷 Great choice! Our garden design team will help create a beautiful outdoor space."
+            case "install_lawn":
+                response = "🌱 We can install natural or artificial lawns. Which one would you prefer?"
+            case "outdoor_lighting":
+                response = "💡 Outdoor lighting options include solar, LED, and decorative fixtures."
+            case "water_features":
+                response = "💦 We can add fountains, ponds, or waterfalls to your landscape."
+            default:
+                response = "❓ Sorry, I didn’t understand that option."
+            }
+        }
+    }
+
+	 // Send text fallback if response is set
+    if response != "" {
+        _ = wc.whatsappService.SendTextMessage(message.From, response)
+    }
 }
 
 // func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message models.WhatsAppMessage, metadata models.WhatsAppMetadata) {
