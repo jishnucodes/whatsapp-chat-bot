@@ -52,6 +52,19 @@ type Appointment struct {
     Time   string
 }
 
+// Very simple phone validation
+func isValidPhone(phone string) bool {
+    if len(phone) < 8 || len(phone) > 15 {
+        return false
+    }
+    for _, ch := range phone {
+        if ch < '0' || ch > '9' {
+            return false
+        }
+    }
+    return true
+}
+
 func (wc *WhatsAppController) callExternalAPI(url string) string {
     req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
     if err != nil {
@@ -175,6 +188,14 @@ func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message
         if state == "awaiting_phone" {
             phone := strings.TrimSpace(message.Text.Body)
 
+			// ✅ Simple validation for phone number
+            if !isValidPhone(phone) {
+                _ = wc.whatsappService.SendTextMessage(userID, "❌ Invalid input. Please enter a valid phone number.")
+                _ = wc.sendMainMenu(userID)
+                delete(userState, userID) // reset state
+                return
+            }
+
             appointments, err := wc.fetchAppointments(ctx, phone)
             if err != nil {
                 _ = wc.whatsappService.SendTextMessage(userID, "⚠️ Sorry, could not fetch your appointments right now.")
@@ -237,6 +258,7 @@ func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message
                 }
 
                 // Back to main menu
+				 _ = wc.whatsappService.SendTextMessage(userID, "🤔 Sorry, I didn’t understand that.")
                 _ = wc.sendMainMenu(userID)
                 return
             }
