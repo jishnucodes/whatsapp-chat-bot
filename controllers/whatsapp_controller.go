@@ -38,6 +38,21 @@ type Post struct {
     Body   string `json:"body"`
 }
 
+
+type AppointmentData struct {
+    PatientCode string
+    Name        string
+    Address     string
+    Phone       string
+    Department  string
+    Date        string
+    Doctor      string
+    Slot        string
+    Step        string
+}
+
+var appointmentState = make(map[string]*AppointmentData) // userID → data
+
 // Track user states
 var (
     userState   = make(map[string]string) // userID -> state
@@ -98,6 +113,173 @@ func (wc *WhatsAppController) callExternalAPI(url string) string {
 
     return "⚠️ No data found."
 }
+
+// Pretend API check for patient code
+func (wc *WhatsAppController) verifyPatientCode(code string) (bool, AppointmentData) {
+    if code == "P123" {
+        return true, AppointmentData{
+            Name:    "John Doe",
+            Phone:   "+919876543210",
+            Address: "123 Main Street",
+        }
+    }
+    return false, AppointmentData{}
+}
+
+// Mock departments
+func (wc *WhatsAppController) sendDepartmentsList(userID string) error {
+    depts := []models.ListItem{
+        {ID: "cardiology", Title: "❤️ Cardiology"},
+        {ID: "dermatology", Title: "🩺 Dermatology"},
+        {ID: "pediatrics", Title: "👶 Pediatrics"},
+    }
+    interactive := &models.InteractiveMessage{
+        Type: "list",
+        Body: &models.InteractiveBody{Text: "Please select a department"},
+        Action: &models.InteractiveAction{
+            Button: "Choose",
+            Sections: []models.Section{
+                {Title: "Departments", Rows: depts},
+            },
+        },
+    }
+    return wc.whatsappService.SendInteractiveMessage(userID, interactive)
+}
+
+// Mock doctors
+func (wc *WhatsAppController) sendDoctorsList(userID, dept, date string) error {
+    doctors := []models.ListItem{
+        {ID: "dr_smith", Title: "Dr. Smith"},
+        {ID: "dr_jones", Title: "Dr. Jones"},
+    }
+    interactive := &models.InteractiveMessage{
+        Type: "list",
+        Body: &models.InteractiveBody{Text: "Select a doctor"},
+        Action: &models.InteractiveAction{
+            Button: "Choose",
+            Sections: []models.Section{
+                {Title: "Doctors", Rows: doctors},
+            },
+        },
+    }
+    return wc.whatsappService.SendInteractiveMessage(userID, interactive)
+}
+
+// Mock slots
+func (wc *WhatsAppController) sendSlotsList(userID, doctor, date string) error {
+    slots := []models.ListItem{
+        {ID: "10am", Title: "10:00 AM"},
+        {ID: "11am", Title: "11:00 AM"},
+        {ID: "2pm", Title: "02:00 PM"},
+    }
+    interactive := &models.InteractiveMessage{
+        Type: "list",
+        Body: &models.InteractiveBody{Text: "Select a slot"},
+        Action: &models.InteractiveAction{
+            Button: "Choose",
+            Sections: []models.Section{
+                {Title: "Available Slots", Rows: slots},
+            },
+        },
+    }
+    return wc.whatsappService.SendInteractiveMessage(userID, interactive)
+}
+
+// Mock appointment creation
+func (wc *WhatsAppController) createAppointment(data *AppointmentData) bool {
+    log.Printf("📅 Creating appointment: %+v", data)
+    return true // always success for mock
+}
+
+
+func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID string, message models.WhatsAppMessage) {
+    state, exists := appointmentState[userID]
+    if !exists {
+        appointmentState[userID] = &AppointmentData{Step: "ask_patient_code"}
+        _ = wc.whatsappService.SendTextMessage(userID, "🆕 Do you have a patient code? (Yes/No)")
+        return
+    }
+
+    switch state.Step {
+    case "ask_patient_code":
+        if message.Type == "text" && message.Text != nil {
+            ans := strings.ToLower(strings.TrimSpace(message.Text.Body))
+            if ans == "yes" {
+                state.Step = "await_patient_code"
+                _ = wc.whatsappService.SendTextMessage(userID, "📋 Please enter your patient code:")
+            } else if ans == "no" {
+                state.Step = "await_patient_name"
+                _ = wc.whatsappService.SendTextMessage(userID, "👤 Please enter your full name:")
+            } else {
+                _ = wc.whatsappService.SendTextMessage(userID, "❌ Please reply Yes or No.")
+            }
+        }
+
+    case "await_patient_code":
+        state.PatientCode = message.Text.Body
+        valid, details := wc.verifyPatientCode(state.PatientCode)
+        if !valid {
+            _ = wc.whatsappService.SendTextMessage(userID, "❌ Invalid patient code. Please try again.")
+            return
+        }
+        state.Name = details.Name
+        state.Phone = details.Phone
+        state.Address = details.Address
+        state.Step = "choose_department"
+        _ = wc.sendDepartmentsList(userID)
+
+    case "await_patient_name":
+        state.Name = message.Text.Body
+        state.Step = "await_patient_address"
+        _ = wc.whatsappService.SendTextMessage(userID, "🏠 Please enter your address:")
+
+    case "await_patient_address":
+        state.Address = message.Text.Body
+        state.Step = "await_patient_phone"
+        _ = wc.whatsappService.SendTextMessage(userID, "📞 Please enter your phone number:")
+
+    case "await_patient_phone":
+        state.Phone = message.Text.Body
+        state.Step = "choose_department"
+        _ = wc.sendDepartmentsList(userID)
+
+    case "choose_department":
+        if message.Type == "interactive" && message.Interactive.ListReply != nil {
+            state.Department = message.Interactive.ListReply.ID
+            state.Step = "await_date"
+            _ = wc.whatsappService.SendTextMessage(userID, "📅 Please enter your preferred date (YYYY-MM-DD):")
+        }
+
+    case "await_date":
+        state.Date = message.Text.Body
+        state.Step = "choose_doctor"
+        _ = wc.sendDoctorsList(userID, state.Department, state.Date)
+
+    case "choose_doctor":
+        if message.Type == "interactive" && message.Interactive.ListReply != nil {
+            state.Doctor = message.Interactive.ListReply.ID
+            state.Step = "choose_slot"
+            _ = wc.sendSlotsList(userID, state.Doctor, state.Date)
+        }
+
+    case "choose_slot":
+        if message.Type == "interactive" && message.Interactive.ListReply != nil {
+            state.Slot = message.Interactive.ListReply.ID
+            success := wc.createAppointment(state)
+            if success {
+                _ = wc.whatsappService.SendTextMessage(userID,
+                    fmt.Sprintf("✅ Appointment booked with Dr. %s on %s at %s",
+                        state.Doctor, state.Date, state.Slot))
+            } else {
+                _ = wc.whatsappService.SendTextMessage(userID, "⚠️ Failed to book appointment. Try again later.")
+            }
+
+            delete(appointmentState, userID)
+            _ = wc.sendMainMenu(userID)
+        }
+    }
+}
+
 
 
 
@@ -235,7 +417,7 @@ func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message
                     return
 
                 case "new_appointment":
-                    _ = wc.whatsappService.SendTextMessage(userID, "🆕 Please visit our booking portal: https://clinic-booking.com/new")
+                   wc.handleNewAppointment(ctx, userID, message)
                     _ = wc.sendMainMenu(userID)
                     return
 
@@ -258,14 +440,13 @@ func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message
                 }
 
                 // Back to main menu
-				 _ = wc.whatsappService.SendTextMessage(userID, "🤔 Sorry, I didn’t understand that.")
                 _ = wc.sendMainMenu(userID)
                 return
             }
         }
     }
-
-    // ========== Default: Send main menu ==========
+    // ========== CASE 3: Default fallback ==========
+    _ = wc.whatsappService.SendTextMessage(userID, "🤔 Sorry, I didn’t understand that.")
     _ = wc.sendMainMenu(userID)
 
 	// Check if it's a text message
