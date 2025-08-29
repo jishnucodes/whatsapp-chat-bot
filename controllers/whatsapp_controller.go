@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"sync"
 
 	// "encoding/json"
 	"fmt"
@@ -35,6 +36,20 @@ type Post struct {
     ID     int    `json:"id"`
     Title  string `json:"title"`
     Body   string `json:"body"`
+}
+
+// Track user states
+var (
+    userState   = make(map[string]string) // userID -> state
+    stateMutex  sync.Mutex
+)
+
+// Appointment structure
+type Appointment struct {
+    ID     string
+    Doctor string
+    Date   string
+    Time   string
 }
 
 func (wc *WhatsAppController) callExternalAPI(url string) string {
@@ -139,52 +154,144 @@ func (wc *WhatsAppController) processMessages(ctx context.Context, value models.
 func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message models.WhatsAppMessage, metadata models.WhatsAppMetadata) {
 	log.Println("Incoming message:", message.Type)
 
-	// Check if it's a text message
-	if message.Type == "text" && message.Text != nil {
-		userText := strings.TrimSpace(strings.ToLower(message.Text.Body))
-		if userText == "hi" || userText == "hello" {
-			// Send interactive buttons instead of plain text
-			interactive := &models.InteractiveMessage{
-				Type: "button",
-				Body: &models.InteractiveBody{
-					Text: "Hi! How can we help you today?",
-				},
-				Footer: &models.InteractiveFooter{
-					Text: "Sanitas Landscaping",
-				},
-				Action: &models.InteractiveAction{
-					Buttons: []models.InteractiveButton{
-						{
-							Type: "reply",
-							Reply: &models.ButtonReply{
-								ID:    "help_plant_care",
-								Title: "Plant Care",
-							},
-						},
-						{
-							Type: "reply",
-							Reply: &models.ButtonReply{
-								ID:    "help_landscaping",
-								Title: "Landscaping",
-							},
-						},
-						{
-							Type: "reply",
-							Reply: &models.ButtonReply{
-								ID:    "help_contact",
-								Title: "Contact Us",
-							},
-						},
-					},
-				},
-			}
+	userID := message.From
 
-			if err := wc.whatsappService.SendInteractiveMessage(message.From, interactive); err != nil {
-				log.Printf("Failed to send interactive message: %v", err)
-			}
-			return
-		}
-	}
+	// ========== CASE 0: User says "hi" ==========
+    if message.Type == "text" && message.Text != nil {
+        userText := strings.TrimSpace(strings.ToLower(message.Text.Body))
+        if userText == "hi" || userText == "hello" {
+            _ = wc.sendMainMenu(userID)
+            return
+        }
+    }
+
+
+	// ========== CASE 1: Awaiting phone number ==========
+    if message.Type == "text" && message.Text != nil {
+        stateMutex.Lock()
+        state := userState[userID]
+        stateMutex.Unlock()
+
+        if state == "awaiting_phone" {
+            phone := strings.TrimSpace(message.Text.Body)
+
+            appointments, err := wc.fetchAppointments(ctx, phone)
+            if err != nil {
+                _ = wc.whatsappService.SendTextMessage(userID, "⚠️ Sorry, could not fetch your appointments right now.")
+                _ = wc.sendMainMenu(userID)
+                return
+            }
+
+            if len(appointments) == 0 {
+                _ = wc.whatsappService.SendTextMessage(userID, "❌ You do not have any active appointments.")
+                _ = wc.sendMainMenu(userID)
+                return
+            }
+
+            // ✅ Send as list menu
+            _ = wc.sendAppointmentsList(userID, appointments)
+
+            // Clear state
+            stateMutex.Lock()
+            delete(userState, userID)
+            stateMutex.Unlock()
+            return
+        }
+    }
+
+    // ========== CASE 2: Interactive messages ==========
+    switch message.Type {
+    case "interactive":
+        if message.Interactive != nil {
+            // Handle Button Reply
+            if message.Interactive.ButtonReply != nil {
+                switch message.Interactive.ButtonReply.ID {
+                case "my_appointment":
+                    _ = wc.whatsappService.SendTextMessage(userID, "📞 Please enter your phone number to view appointments:")
+                    stateMutex.Lock()
+                    userState[userID] = "awaiting_phone"
+                    stateMutex.Unlock()
+                    return
+
+                case "new_appointment":
+                    _ = wc.whatsappService.SendTextMessage(userID, "🆕 Please visit our booking portal: https://clinic-booking.com/new")
+                    _ = wc.sendMainMenu(userID)
+                    return
+
+                case "contact_us":
+                    _ = wc.whatsappService.SendTextMessage(userID, "📞 Contact us at: +91-98765-43210")
+                    _ = wc.sendMainMenu(userID)
+                    return
+                }
+            }
+
+            // Handle List Reply
+            if message.Interactive.ListReply != nil {
+                apptID := message.Interactive.ListReply.ID
+                details := wc.getAppointmentDetails(apptID)
+
+                if details != "" {
+                    _ = wc.whatsappService.SendTextMessage(userID, details)
+                } else {
+                    _ = wc.whatsappService.SendTextMessage(userID, "❓ Appointment not found.")
+                }
+
+                // Back to main menu
+                _ = wc.sendMainMenu(userID)
+                return
+            }
+        }
+    }
+
+    // ========== Default: Send main menu ==========
+    _ = wc.sendMainMenu(userID)
+
+	// Check if it's a text message
+	// if message.Type == "text" && message.Text != nil {
+	// 	userText := strings.TrimSpace(strings.ToLower(message.Text.Body))
+	// 	if userText == "hi" || userText == "hello" {
+	// 		// Send interactive buttons instead of plain text
+	// 		interactive := &models.InteractiveMessage{
+	// 			Type: "button",
+	// 			Body: &models.InteractiveBody{
+	// 				Text: "Hi! How can we help you today?",
+	// 			},
+	// 			Footer: &models.InteractiveFooter{
+	// 				Text: "Sanitas Landscaping",
+	// 			},
+	// 			Action: &models.InteractiveAction{
+	// 				Buttons: []models.InteractiveButton{
+	// 					{
+	// 						Type: "reply",
+	// 						Reply: &models.ButtonReply{
+	// 							ID:    "help_plant_care",
+	// 							Title: "Plant Care",
+	// 						},
+	// 					},
+	// 					{
+	// 						Type: "reply",
+	// 						Reply: &models.ButtonReply{
+	// 							ID:    "help_landscaping",
+	// 							Title: "Landscaping",
+	// 						},
+	// 					},
+	// 					{
+	// 						Type: "reply",
+	// 						Reply: &models.ButtonReply{
+	// 							ID:    "help_contact",
+	// 							Title: "Contact Us",
+	// 						},
+	// 					},
+	// 				},
+	// 			},
+	// 		}
+
+	// 		if err := wc.whatsappService.SendInteractiveMessage(message.From, interactive); err != nil {
+	// 			log.Printf("Failed to send interactive message: %v", err)
+	// 		}
+	// 		return
+	// 	}
+	// }
 
 	// Fallback: normal handling (like buttons or text responses)
 	// var response string
@@ -230,79 +337,206 @@ func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message
 	// }
 
 
-	// Fallback: handle interactive responses
-    var response string
-    if message.Type == "interactive" && message.Interactive != nil {
-        // Handle button replies
-        if message.Interactive.ButtonReply != nil {
-            switch message.Interactive.ButtonReply.ID {
-            case "help_plant_care":
-                response = "🌱 We can help you with plant care tips."
+	// Fallback: handle interactive responses menu list
+    // var response string
+    // if message.Type == "interactive" && message.Interactive != nil {
+    //     // Handle button replies
+    //     if message.Interactive.ButtonReply != nil {
+    //         switch message.Interactive.ButtonReply.ID {
+    //         case "help_plant_care":
+    //             response = "🌱 We can help you with plant care tips."
 
-            case "help_landscaping":
-                // Show LIST menu instead of simple text
-                listMenu := &models.InteractiveMessage{
-                    Type: "list",
-                    Header: &models.MessageHeader{
-                        Type: "text",
-                        Text: "Landscaping Services",
-                    },
-                    Body: &models.InteractiveBody{
-                        Text: "Please select an option:",
-                    },
-                    Footer: &models.InteractiveFooter{
-                        Text: "Tap to choose",
-                    },
-                    Action: &models.InteractiveAction{
-                        Button: "View Options",
-                        Sections: []models.Section{
-                            {
-                                Title: "Landscaping Menu",
-                                Rows: []models.ListItem{
-                                    {ID: "design_garden", Title: "Garden Design"},
-                                    {ID: "install_lawn", Title: "Install Lawn"},
-                                    {ID: "outdoor_lighting", Title: "Outdoor Lighting"},
-                                    {ID: "water_features", Title: "Water Features"},
-                                },
-                            },
-                        },
-                    },
-                }
+    //         case "help_landscaping":
+    //             // Show LIST menu instead of simple text
+    //             listMenu := &models.InteractiveMessage{
+    //                 Type: "list",
+    //                 Header: &models.MessageHeader{
+    //                     Type: "text",
+    //                     Text: "Landscaping Services",
+    //                 },
+    //                 Body: &models.InteractiveBody{
+    //                     Text: "Please select an option:",
+    //                 },
+    //                 Footer: &models.InteractiveFooter{
+    //                     Text: "Tap to choose",
+    //                 },
+    //                 Action: &models.InteractiveAction{
+    //                     Button: "View Options",
+    //                     Sections: []models.Section{
+    //                         {
+    //                             Title: "Landscaping Menu",
+    //                             Rows: []models.ListItem{
+    //                                 {ID: "design_garden", Title: "Garden Design"},
+    //                                 {ID: "install_lawn", Title: "Install Lawn"},
+    //                                 {ID: "outdoor_lighting", Title: "Outdoor Lighting"},
+    //                                 {ID: "water_features", Title: "Water Features"},
+    //                             },
+    //                         },
+    //                     },
+    //                 },
+    //             }
 
-                if err := wc.whatsappService.SendInteractiveMessage(message.From, listMenu); err != nil {
-                    log.Printf("Failed to send list menu: %v", err)
-                }
-                return // stop here, don’t send plain text
+    //             if err := wc.whatsappService.SendInteractiveMessage(message.From, listMenu); err != nil {
+    //                 log.Printf("Failed to send list menu: %v", err)
+    //             }
+    //             return // stop here, don’t send plain text
 
-            case "help_contact":
-                response = "📞 Contact us at +91-98765-43210."
+    //         case "help_contact":
+    //             response = "📞 Contact us at +91-98765-43210."
 
-            default:
-                response = "❓ Sorry, I didn’t understand that option."
-            }
-        }
+    //         default:
+    //             response = "❓ Sorry, I didn’t understand that option."
+    //         }
+    //     }
 
-        // Handle list menu replies
-        if message.Interactive.ListReply != nil {
-            switch message.Interactive.ListReply.ID {
-            case "design_garden":
-                response = "🌷 Great choice! Our garden design team will help create a beautiful outdoor space."
-            case "install_lawn":
-                response = "🌱 We can install natural or artificial lawns. Which one would you prefer?"
-            case "outdoor_lighting":
-                response = "💡 Outdoor lighting options include solar, LED, and decorative fixtures."
-            case "water_features":
-                response = "💦 We can add fountains, ponds, or waterfalls to your landscape."
-            default:
-                response = "❓ Sorry, I didn’t understand that option."
-            }
-        }
+    //     // Handle list menu replies
+    //     if message.Interactive.ListReply != nil {
+    //         switch message.Interactive.ListReply.ID {
+    //         case "design_garden":
+    //             response = "🌷 Great choice! Our garden design team will help create a beautiful outdoor space."
+    //         case "install_lawn":
+    //             response = "🌱 We can install natural or artificial lawns. Which one would you prefer?"
+    //         case "outdoor_lighting":
+    //             response = "💡 Outdoor lighting options include solar, LED, and decorative fixtures."
+    //         case "water_features":
+    //             response = "💦 We can add fountains, ponds, or waterfalls to your landscape."
+    //         default:
+    //             response = "❓ Sorry, I didn’t understand that option."
+    //         }
+    //     }
+    // }
+
+	//  // Send text fallback if response is set
+    // if response != "" {
+    //     _ = wc.whatsappService.SendTextMessage(message.From, response)
+    // }
+}
+
+// ========================
+// Appointment API Call
+// ========================
+func (wc *WhatsAppController) fetchAppointments(ctx context.Context, phone string) ([]Appointment, error) {
+    // Example: GET request to your external API
+    req, err := http.NewRequestWithContext(ctx, "GET", "https://jsonplaceholder.typicode.com/posts", nil)
+    if err != nil {
+        return nil, err
     }
 
-	 // Send text fallback if response is set
-    if response != "" {
-        _ = wc.whatsappService.SendTextMessage(message.From, response)
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        return nil, err
     }
+    defer resp.Body.Close()
+
+    var raw []map[string]interface{}
+    if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+        return nil, err
+    }
+
+    // 🔹 Convert API data into Appointment objects
+    // Replace this with your real API fields
+    appointments := []Appointment{
+        {ID: "appt1", Doctor: "Dr. Smith", Date: "2025-09-01", Time: "10:00 AM"},
+        {ID: "appt2", Doctor: "Dr. Johnson", Date: "2025-09-02", Time: "3:00 PM"},
+    }
+
+    return appointments, nil
+}
+
+// ========================
+// Send List of Appointments
+// ========================
+func (wc *WhatsAppController) sendAppointmentsList(to string, appointments []Appointment) error {
+    rows := make([]models.ListItem, 0, len(appointments))
+
+    for _, appt := range appointments {
+        rows = append(rows, models.ListItem{
+            ID:    appt.ID,
+            Title: fmt.Sprintf("%s (%s)", appt.Doctor, appt.Date),
+            Description: fmt.Sprintf("Time: %s", appt.Time),
+        })
+    }
+
+    sections := []models.Section{
+        {
+            Title: "Your Appointments",
+            Rows:  rows,
+        },
+    }
+
+    interactive := &models.InteractiveMessage{
+        Type: "list",
+        Header: &models.MessageHeader{
+            Type: "text",
+            Text: "📅 My Appointments",
+        },
+        Body: &models.InteractiveBody{
+            Text: "Select one appointment for details:",
+        },
+        Footer: &models.InteractiveFooter{
+            Text: "Clinic Support",
+        },
+        Action: &models.InteractiveAction{
+            Button:   "Choose Appointment",
+            Sections: sections,
+        },
+    }
+
+    return wc.whatsappService.SendInteractiveMessage(to, interactive)
+}
+
+// ========================
+// Appointment Details
+// ========================
+func (wc *WhatsAppController) getAppointmentDetails(apptID string) string {
+    switch apptID {
+    case "appt1":
+        return "✅ Appointment with Dr. Smith\n📅 Date: 2025-09-01\n⏰ Time: 10:00 AM"
+    case "appt2":
+        return "✅ Appointment with Dr. Johnson\n📅 Date: 2025-09-02\n⏰ Time: 3:00 PM"
+    }
+    return ""
+}
+
+// ========================
+// Main Menu Buttons
+// ========================
+func (wc *WhatsAppController) sendMainMenu(to string) error {
+    interactive := &models.InteractiveMessage{
+        Type: "button",
+        Body: &models.InteractiveBody{
+            Text: "👋 Hi! How can we help you today?",
+        },
+        Footer: &models.InteractiveFooter{
+            Text: "Clinic Support",
+        },
+        Action: &models.InteractiveAction{
+            Buttons: []models.InteractiveButton{
+                {
+                    Type: "reply",
+                    Reply: &models.ButtonReply{
+                        ID:    "my_appointment",
+                        Title: "📅 My Appointment",
+                    },
+                },
+                {
+                    Type: "reply",
+                    Reply: &models.ButtonReply{
+                        ID:    "new_appointment",
+                        Title: "🆕 New Appointment",
+                    },
+                },
+                {
+                    Type: "reply",
+                    Reply: &models.ButtonReply{
+                        ID:    "contact_us",
+                        Title: "📞 Contact Us",
+                    },
+                },
+            },
+        },
+    }
+    return wc.whatsappService.SendInteractiveMessage(to, interactive)
 }
 
 // func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message models.WhatsAppMessage, metadata models.WhatsAppMetadata) {
