@@ -417,21 +417,21 @@ func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message
 // ========================
 func (wc *WhatsAppController) fetchAppointments(ctx context.Context, phone string) ([]Appointment, error) {
     // Example: GET request to your external API
-    req, err := http.NewRequestWithContext(ctx, "GET", "https://jsonplaceholder.typicode.com/posts", nil)
-    if err != nil {
-        return nil, err
-    }
+    // req, err := http.NewRequestWithContext(ctx, "GET", "https://jsonplaceholder.typicode.com/posts", nil)
+    // if err != nil {
+    //     return nil, err
+    // }
 
-    resp, err := http.DefaultClient.Do(req)
-    if err != nil {
-        return nil, err
-    }
-    defer resp.Body.Close()
+    // resp, err := http.DefaultClient.Do(req)
+    // if err != nil {
+    //     return nil, err
+    // }
+    // defer resp.Body.Close()
 
-    var raw []map[string]interface{}
-    if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-        return nil, err
-    }
+    // var raw []map[string]interface{}
+    // if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+    //     return nil, err
+    // }
 
     // 🔹 Convert API data into Appointment objects
     // Replace this with your real API fields
