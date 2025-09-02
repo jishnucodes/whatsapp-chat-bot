@@ -470,6 +470,7 @@ func (wc *WhatsAppController) fetchAppointments(ctx context.Context, phone strin
     //     return nil, err
     // }
 
+    log.Println("Fetching appointments for phone: ", phone)
     // 🔹 Convert API data into Appointment objects
     // Replace this with your real API fields
     appointments := []Appointment{
