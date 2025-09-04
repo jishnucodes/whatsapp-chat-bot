@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"strconv"
 	"sync"
+	"time"
 
 	// "encoding/json"
 	"fmt"
@@ -60,12 +62,12 @@ var (
 )
 
 // Appointment structure
-type Appointment struct {
-    ID     string
-    Doctor string
-    Date   string
-    Time   string
-}
+// type Appointment struct {
+//     ID     string
+//     Doctor string
+//     Date   string
+//     Time   string
+// }
 
 // Very simple phone validation
 func isValidPhone(phone string) bool {
@@ -452,35 +454,73 @@ func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message
 // ========================
 // Appointment API Call
 // ========================
+type Appointment struct {
+    ID     int    `json:"appointmentId"`
+    Doctor int    `json:"doctorId"` // You can later map this to doctor name if needed
+    Date   string `json:"date"`
+    Time   string `json:"time"`
+}
+
+
+
+// Raw API response struct
+type apiResponse struct {
+    Status     bool `json:"status"`
+    StatusCode int  `json:"statusCode"`
+    Message    string `json:"message"`
+    Data       []struct {
+        AppointmentID       int    `json:"appointmentId"`
+        DoctorID            int    `json:"doctorId"`
+        AppointmentDateTime string `json:"appointmentDateTime"`
+    } `json:"data"`
+}
+
 func (wc *WhatsAppController) fetchAppointments(ctx context.Context, phone string) ([]Appointment, error) {
-    // Example: GET request to your external API
-    // req, err := http.NewRequestWithContext(ctx, "GET", "https://jsonplaceholder.typicode.com/posts", nil)
-    // if err != nil {
-    //     return nil, err
-    // }
+    url := fmt.Sprintf("http://61.2.142.81:8086/api/appointment/search?phoneNumber=%s", phone)
 
-    // resp, err := http.DefaultClient.Do(req)
-    // if err != nil {
-    //     return nil, err
-    // }
-    // defer resp.Body.Close()
-
-    // var raw []map[string]interface{}
-    // if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-    //     return nil, err
-    // }
-
-    log.Println("Fetching appointments for phone: ", phone)
-    
-    // 🔹 Convert API data into Appointment objects
-    // Replace this with your real API fields
-    appointments := []Appointment{
-        {ID: "appt1", Doctor: "Dr. Smith", Date: "2025-09-01", Time: "10:00 AM"},
-        {ID: "appt2", Doctor: "Dr. Johnson", Date: "2025-09-02", Time: "3:00 PM"},
+    req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+    if err != nil {
+        return nil, fmt.Errorf("failed to create request: %w", err)
     }
 
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        return nil, fmt.Errorf("failed to send request: %w", err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        bodyBytes, _ := io.ReadAll(resp.Body)
+        return nil, fmt.Errorf("API error: %s (status %d)", string(bodyBytes), resp.StatusCode)
+    }
+
+    var apiResp apiResponse
+    if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+        return nil, fmt.Errorf("failed to decode response: %w", err)
+    }
+
+    // Convert raw API data into your Appointment model
+    appointments := make([]Appointment, len(apiResp.Data))
+    for i, d := range apiResp.Data {
+        t, err := time.Parse("2006-01-02T15:04:05", d.AppointmentDateTime)
+        if err != nil {
+            return nil, fmt.Errorf("failed to parse appointmentDateTime: %w", err)
+        }
+
+        appointments[i] = Appointment{
+            ID:     d.AppointmentID,
+            Doctor: d.DoctorID, // Replace with lookup if needed
+            Date:   t.Format("2006-01-02"),
+            Time:   t.Format("03:04 PM"),
+        }
+    }
+
+    log.Println("Fetched appointments", appointments)
+
+    log.Printf("Fetched %d appointments for phone: %s", len(appointments), phone)
     return appointments, nil
 }
+
 
 // ========================
 // Send List of Appointments
@@ -490,7 +530,7 @@ func (wc *WhatsAppController) sendAppointmentsList(to string, appointments []App
 
     for _, appt := range appointments {
         rows = append(rows, models.ListItem{
-            ID:    appt.ID,
+            ID:    strconv.Itoa(appt.ID),
             Title: fmt.Sprintf("%s (%s)", appt.Doctor, appt.Date),
             Description: fmt.Sprintf("Time: %s", appt.Time),
         })
