@@ -4,7 +4,7 @@ package controllers
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	// "errors"
 	"io"
 	"strconv"
 	"sync"
@@ -83,39 +83,34 @@ func isValidPhone(phone string) bool {
     return true
 }
 
-func (wc *WhatsAppController) callExternalAPI(url string) string {
-    req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+func callExternalAPI[T any](ctx context.Context, url string, target *T) error {
+    ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+    defer cancel()
+
+    req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
     if err != nil {
-        log.Printf("Failed to build API request: %v", err)
-        return "⚠️ Something went wrong. Please try again."
+        return fmt.Errorf("failed to build API request: %w", err)
     }
 
     resp, err := http.DefaultClient.Do(req)
     if err != nil {
-        log.Printf("API request failed: %v", err)
-        return "⚠️ Could not reach our service right now."
+        return fmt.Errorf("API request failed: %w", err)
     }
     defer resp.Body.Close()
 
-    body, err := io.ReadAll(resp.Body)
-    if err != nil {
-        log.Printf("Failed to read API response: %v", err)
-        return "⚠️ Error reading response."
+    if resp.StatusCode != http.StatusOK {
+        bodyBytes, _ := io.ReadAll(resp.Body)
+        return fmt.Errorf("API error: %s (status %d)", string(bodyBytes), resp.StatusCode)
     }
 
-    // Unmarshal into slice of posts
-    var posts []Post
-    if err := json.Unmarshal(body, &posts); err != nil {
-        log.Printf("Failed to parse API response: %v", err)
-        return "⚠️ Error parsing response."
+    if err := json.NewDecoder(resp.Body).Decode(target); err != nil {
+        return fmt.Errorf("failed to parse API response: %w", err)
     }
 
-    if len(posts) > 0 {
-        return posts[0].Body // ✅ just return the body field
-    }
-
-    return "⚠️ No data found."
+    return nil
 }
+
+
 
 // Pretend API check for patient code
 func (wc *WhatsAppController) verifyPatientCode(code string) (bool, AppointmentData) {
@@ -478,41 +473,15 @@ type apiResponse struct {
 }
 
 func (wc *WhatsAppController) fetchAppointments(ctx context.Context, phone string) ([]Appointment, error) {
-    // ✅ Always wrap the incoming context with a safe timeout
-    ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-    defer cancel()
-
     url := fmt.Sprintf("http://61.2.142.81:8086/api/appointment/search?phoneNumber=%s", phone)
 
-    req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-    if err != nil {
-        return nil, fmt.Errorf("failed to create request: %w", err)
-    }
-
-    resp, err := http.DefaultClient.Do(req)
-    if err != nil {
-        // If ctx was canceled due to timeout, make it explicit in logs
-        if errors.Is(err, context.DeadlineExceeded) {
-            return nil, fmt.Errorf("appointment API timed out: %w", err)
-        }
-        if errors.Is(err, context.Canceled) {
-            return nil, fmt.Errorf("appointment API request was canceled: %w", err)
-        }
-        return nil, fmt.Errorf("failed to send request: %w", err)
-    }
-    defer resp.Body.Close()
-
-    if resp.StatusCode != http.StatusOK {
-        bodyBytes, _ := io.ReadAll(resp.Body)
-        return nil, fmt.Errorf("API error: %s (status %d)", string(bodyBytes), resp.StatusCode)
-    }
-
     var apiResp apiResponse
-    if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-        return nil, fmt.Errorf("failed to decode response: %w", err)
+    if err := callExternalAPI(ctx, url, &apiResp); err != nil {
+        log.Println("API fetching error", err)
+        return nil, err
     }
 
-    // Convert raw API data into your Appointment model
+    // Convert to your model
     appointments := make([]Appointment, len(apiResp.Data))
     for i, d := range apiResp.Data {
         t, err := time.Parse("2006-01-02T15:04:05", d.AppointmentDateTime)
@@ -522,15 +491,17 @@ func (wc *WhatsAppController) fetchAppointments(ctx context.Context, phone strin
 
         appointments[i] = Appointment{
             ID:     d.AppointmentID,
-            // Doctor: fmt.Sprintf("Doctor #%d", d.DoctorID), // replace with lookup if needed
+            // Doctor: fmt.Sprintf("Doctor #%d", d.DoctorID),
             Date:   t.Format("2006-01-02"),
             Time:   t.Format("03:04 PM"),
         }
     }
 
-    log.Printf("Fetched %d appointments for phone: %s", len(appointments), phone)
+    log.Println("Appointments", appointments)
+
     return appointments, nil
 }
+
 
 
 
@@ -543,7 +514,7 @@ func (wc *WhatsAppController) sendAppointmentsList(to string, appointments []App
     for _, appt := range appointments {
         rows = append(rows, models.ListItem{
             ID:    strconv.Itoa(appt.ID),
-            Title: fmt.Sprintf("%s (%s)", appt.Doctor, appt.Date),
+            // Title: fmt.Sprintf("%s (%s)", appt.Doctor, appt.Date),
             Description: fmt.Sprintf("Time: %s", appt.Time),
         })
     }
