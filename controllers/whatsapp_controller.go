@@ -385,6 +385,7 @@ func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message
 
             appointments, err := wc.fetchAppointments(ctx, phone)
             if err != nil {
+                log.Println("appointment fetching error", err)
                 _ = wc.whatsappService.SendTextMessage(userID, "⚠️ Sorry, could not fetch your appointments right now.")
                 _ = wc.sendMainMenu(userID)
                 return
