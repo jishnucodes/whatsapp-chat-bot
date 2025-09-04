@@ -520,7 +520,7 @@ func (wc *WhatsAppController) sendAppointmentsList(to string, appointments []App
     for _, appt := range appointments {
         rows = append(rows, models.ListItem{
             ID:    strconv.Itoa(appt.ID),
-            Title: fmt.Sprintf("Appointment on %s", appt.Date),
+            Title: appt.Date,
             Description: fmt.Sprintf("Time: %s", appt.Time),
         })
     }
