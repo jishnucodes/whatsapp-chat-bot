@@ -2,17 +2,18 @@
 package services
 
 import (
-    "bytes"
-    "encoding/json"
-    "fmt"
-    "io"
-    "net/http"
-    "os"
-    "strings"
-    "sync"
-    "time"
-    
-    "clinic-chatbot-backend/models"
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
+	"clinic-chatbot-backend/models"
 )
 
 type WhatsAppService struct {
@@ -80,6 +81,8 @@ func (ws *WhatsAppService) SendInteractiveMessage(to string, interactive *models
         Type:             "interactive",
         Interactive:      interactive,
     }
+
+    log.Println("payload from whatsapp", payload)
     
     return ws.sendMessage(payload)
 }
@@ -139,6 +142,7 @@ func (ws *WhatsAppService) sendRequest(payload interface{}) error {
     
     req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
     if err != nil {
+        log.Println("failed to create request: %w", err)
         return fmt.Errorf("failed to create request: %w", err)
     }
     
@@ -147,18 +151,21 @@ func (ws *WhatsAppService) sendRequest(payload interface{}) error {
     
     resp, err := ws.httpClient.Do(req)
     if err != nil {
+        log.Println("failed to send request: %w", err)
         return fmt.Errorf("failed to send request: %w", err)
     }
     defer resp.Body.Close()
     
     body, err := io.ReadAll(resp.Body)
     if err != nil {
+        log.Println("failed to read response: %w", err)
         return fmt.Errorf("failed to read response: %w", err)
     }
     
     if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
         var errorResp map[string]interface{}
         if err := json.Unmarshal(body, &errorResp); err == nil {
+            log.Println("WhatsApp API error: %v", errorResp)
             return fmt.Errorf("WhatsApp API error: %v", errorResp)
         }
         return fmt.Errorf("WhatsApp API error: %s", string(body))
