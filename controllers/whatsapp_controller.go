@@ -4,6 +4,7 @@ package controllers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"strconv"
 	"sync"
@@ -477,6 +478,10 @@ type apiResponse struct {
 }
 
 func (wc *WhatsAppController) fetchAppointments(ctx context.Context, phone string) ([]Appointment, error) {
+    // ✅ Always wrap the incoming context with a safe timeout
+    ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+    defer cancel()
+
     url := fmt.Sprintf("http://61.2.142.81:8086/api/appointment/search?phoneNumber=%s", phone)
 
     req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -486,6 +491,13 @@ func (wc *WhatsAppController) fetchAppointments(ctx context.Context, phone strin
 
     resp, err := http.DefaultClient.Do(req)
     if err != nil {
+        // If ctx was canceled due to timeout, make it explicit in logs
+        if errors.Is(err, context.DeadlineExceeded) {
+            return nil, fmt.Errorf("appointment API timed out: %w", err)
+        }
+        if errors.Is(err, context.Canceled) {
+            return nil, fmt.Errorf("appointment API request was canceled: %w", err)
+        }
         return nil, fmt.Errorf("failed to send request: %w", err)
     }
     defer resp.Body.Close()
@@ -510,17 +522,16 @@ func (wc *WhatsAppController) fetchAppointments(ctx context.Context, phone strin
 
         appointments[i] = Appointment{
             ID:     d.AppointmentID,
-            Doctor: d.DoctorID, // Replace with lookup if needed
+            // Doctor: fmt.Sprintf("Doctor #%d", d.DoctorID), // replace with lookup if needed
             Date:   t.Format("2006-01-02"),
             Time:   t.Format("03:04 PM"),
         }
     }
 
-    log.Println("Fetched appointments", appointments)
-
     log.Printf("Fetched %d appointments for phone: %s", len(appointments), phone)
     return appointments, nil
 }
+
 
 
 // ========================
