@@ -473,6 +473,11 @@ type apiResponse struct {
 }
 
 func (wc *WhatsAppController) fetchAppointments(ctx context.Context, phone string) ([]Appointment, error) {
+
+     // 🔹 Force a fresh background context, safe timeout
+    ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+    defer cancel()
+    
     url := fmt.Sprintf("http://61.2.142.81:8086/api/appointment/search?phoneNumber=%s", phone)
 
     var apiResp apiResponse
