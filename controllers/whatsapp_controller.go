@@ -496,7 +496,7 @@ func (wc *WhatsAppController) fetchAppointments(ctx context.Context, phone strin
 
         appointments[i] = Appointment{
             ID:     d.AppointmentID,
-            // Doctor: fmt.Sprintf("Doctor #%d", d.DoctorID),
+            Doctor: d.DoctorID,
             Date:   t.Format("2006-01-02"),
             Time:   t.Format("03:04 PM"),
         }
@@ -520,7 +520,7 @@ func (wc *WhatsAppController) sendAppointmentsList(to string, appointments []App
     for _, appt := range appointments {
         rows = append(rows, models.ListItem{
             ID:    strconv.Itoa(appt.ID),
-            // Title: fmt.Sprintf("%s (%s)", appt.Doctor, appt.Date),
+            Title: fmt.Sprintf("Appointment on %s", appt.Date),
             Description: fmt.Sprintf("Time: %s", appt.Time),
         })
     }
