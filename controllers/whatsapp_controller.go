@@ -477,7 +477,7 @@ func (wc *WhatsAppController) fetchAppointments(ctx context.Context, phone strin
      // 🔹 Force a fresh background context, safe timeout
     ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
     defer cancel()
-    
+
     url := fmt.Sprintf("http://61.2.142.81:8086/api/appointment/search?phoneNumber=%s", phone)
 
     var apiResp apiResponse
@@ -502,7 +502,8 @@ func (wc *WhatsAppController) fetchAppointments(ctx context.Context, phone strin
         }
     }
 
-    log.Println("Appointments", appointments)
+    b, _ := json.MarshalIndent(appointments, "", "  ")
+    log.Println("Appointments", string(b))
 
     return appointments, nil
 }
