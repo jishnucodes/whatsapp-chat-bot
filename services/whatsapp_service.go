@@ -165,7 +165,7 @@ func (ws *WhatsAppService) sendRequest(payload interface{}) error {
     if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
         var errorResp map[string]interface{}
         if err := json.Unmarshal(body, &errorResp); err == nil {
-            log.Println("WhatsApp API error: %v", errorResp)
+            log.Println("WhatsApp API error: ", errorResp)
             return fmt.Errorf("WhatsApp API error: %v", errorResp)
         }
         return fmt.Errorf("WhatsApp API error: %s", string(body))
