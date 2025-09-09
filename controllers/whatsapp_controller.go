@@ -110,26 +110,6 @@ func callExternalAPI[T any](ctx context.Context, url string, target *T) error {
 	return nil
 }
 
-// Mock slots
-func (wc *WhatsAppController) sendSlotsList(userID, doctor, date string) error {
-	slots := []models.ListItem{
-		{ID: "10am", Title: "10:00 AM"},
-		{ID: "11am", Title: "11:00 AM"},
-		{ID: "2pm", Title: "02:00 PM"},
-	}
-	interactive := &models.InteractiveMessage{
-		Type: "list",
-		Body: &models.InteractiveBody{Text: "Select a slot"},
-		Action: &models.InteractiveAction{
-			Button: "Choose",
-			Sections: []models.Section{
-				{Title: "Available Slots", Rows: slots},
-			},
-		},
-	}
-	return wc.whatsappService.SendInteractiveMessage(userID, interactive)
-}
-
 // Mock appointment creation
 func (wc *WhatsAppController) createAppointment(data *AppointmentData) bool {
 	log.Printf("📅 Creating appointment: %+v", data)
@@ -530,11 +510,50 @@ type apiDoctorResponse struct {
 	} `json:"data"`
 }
 
+type Availability struct {
+	ID        int    `json:"availabilityId"`
+	DayOfWeek string `json:"dayOfWeek"`
+	WeekType  string `json:"weekType"`
+	Start     string `json:"availableTimeStart"`
+	End       string `json:"availableTimeEnd"`
+}
+
+type apiDoctorAvailabilityResponse struct {
+	Status     bool   `json:"status"`
+	StatusCode int    `json:"statusCode"`
+	Message    string `json:"message"`
+	Data       []struct {
+		DayOfWeek          string `json:"dayOfWeek"`
+		WeekType           string `json:"weekType"`
+		AvailabilityID     int    `json:"availabilityId"`
+		AvailableTimeStart string `json:"availableTimeStart"`
+		AvailableTimeEnd   string `json:"availableTimeEnd"`
+	} `json:"data"`
+}
+
 func truncate(str string, max int) string {
 	if len(str) <= max {
 		return str
 	}
 	return str[:max-1] + "…" // add ellipsis
+}
+
+func generateTimeSlots(start, end string) ([]string, error) {
+	layout := "15:04:05"
+	tStart, err := time.Parse(layout, start)
+	if err != nil {
+		return nil, fmt.Errorf("invalid start time: %w", err)
+	}
+	tEnd, err := time.Parse(layout, end)
+	if err != nil {
+		return nil, fmt.Errorf("invalid end time: %w", err)
+	}
+
+	slots := []string{}
+	for t := tStart; t.Before(tEnd); t = t.Add(15 * time.Minute) {
+		slots = append(slots, t.Format("15:04"))
+	}
+	return slots, nil
 }
 
 func (wc *WhatsAppController) fetchAppointments(phone string) ([]Appointment, error) {
@@ -844,8 +863,8 @@ func (wc *WhatsAppController) sendDoctorsList(userID, dept, date string) error {
 	rows := make([]models.ListItem, 0, len(doctors))
 	for _, doctor := range doctors {
 		rows = append(rows, models.ListItem{
-			ID:    strconv.Itoa(doctor.ID),     // unique identifier for callback
-			Title: doctor.DoctorName,           // 👨‍⚕️ main label
+			ID:    strconv.Itoa(doctor.ID), // unique identifier for callback
+			Title: doctor.DoctorName,       // 👨‍⚕️ main label
 			// Description: "Some extra info",  // optional: specialization, timings etc.
 		})
 	}
@@ -873,6 +892,82 @@ func (wc *WhatsAppController) sendDoctorsList(userID, dept, date string) error {
 	return wc.whatsappService.SendInteractiveMessage(userID, interactive)
 }
 
+func (wc *WhatsAppController) sendSlotsList(userID, doctor, date string) error {
+	// 🔹 Context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	doctorInt, err := strconv.Atoi(doctor)
+	if err != nil {
+		return fmt.Errorf("invalid departmentId: %v", err)
+	}
+
+	url := fmt.Sprintf(
+		"http://61.2.142.81:8086/api/doctorAvailability/byDate?doctorId=%d&inputDate=%s",
+		doctorInt, date,
+	)
+
+	var apiResp apiDoctorAvailabilityResponse
+	if err := callExternalAPI(ctx, url, &apiResp); err != nil {
+		log.Println("API fetching error", err)
+		return err
+	}
+
+	// Convert to your model
+	doctorAvailabilities := make([]Availability, len(apiResp.Data))
+	for i, d := range apiResp.Data {
+		doctorAvailabilities[i] = Availability{
+			ID:        d.AvailabilityID,
+			WeekType:  d.WeekType,
+			DayOfWeek: d.DayOfWeek,
+			Start:     d.AvailableTimeStart,
+			End:       d.AvailableTimeEnd,
+		}
+	}
+
+	b, _ := json.MarshalIndent(doctorAvailabilities, "", "  ")
+	log.Println("doctors", string(b))
+
+	// Build WhatsApp list items
+	rows := make([]models.ListItem, 0, len(doctorAvailabilities))
+    counter := 1
+    
+	// Assuming apiResp.Data contains the availability
+	for _, avail := range apiResp.Data {
+		slots, err := generateTimeSlots(avail.AvailableTimeStart, avail.AvailableTimeEnd)
+		if err != nil {
+			log.Println("Error generating slots:", err)
+			continue
+		}
+
+		for _, slot := range slots {
+			rows = append(rows, models.ListItem{
+				ID:    strconv.Itoa(counter),  
+				Title:       slot,                                             // e.g. "09:00"
+				Description: fmt.Sprintf("%s - %s", avail.DayOfWeek, avail.WeekType),
+			})
+		}
+	}
+
+	interactive := &models.InteractiveMessage{
+		Type: "list",
+		Header: &models.MessageHeader{
+			Type: "text",
+			Text: "⏰ Available Time Slots",
+		},
+		Body: &models.InteractiveBody{
+			Text: "Please choose a time slot:",
+		},
+		Action: &models.InteractiveAction{
+			Button: "Choose Slot",
+			Sections: []models.Section{
+				{Title: "Available Slots", Rows: rows},
+			},
+		},
+	}
+	return wc.whatsappService.SendInteractiveMessage(userID, interactive)
+
+}
 
 // ========================
 // Main Menu Buttons
