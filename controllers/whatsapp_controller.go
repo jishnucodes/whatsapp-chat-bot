@@ -728,7 +728,7 @@ func (wc *WhatsAppController) sendPatientDetailsList(to string, patients []Patie
     
 	for _, appt := range patients {
         fullName := fmt.Sprintf("%s %s", appt.FirstName, appt.LastName)
-        
+
 		rows = append(rows, models.ListItem{
         ID:          strconv.Itoa(appt.ID),
         Title:       truncate(fullName, 24), // short for list
@@ -738,7 +738,7 @@ func (wc *WhatsAppController) sendPatientDetailsList(to string, patients []Patie
 
 	sections := []models.Section{
 		{
-			Title: "Following are the related search results",
+			Title: "Search Results",
 			Rows:  rows,
 		},
 	}
