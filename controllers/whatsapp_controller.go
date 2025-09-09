@@ -556,6 +556,30 @@ func generateTimeSlots(start, end string) ([]string, error) {
 	return slots, nil
 }
 
+func chunkSlotsIntoSections(slots []string, title string) []models.Section {
+    sections := []models.Section{}
+    for i := 0; i < len(slots); i += 10 { // WhatsApp allows max 10 rows per section
+        end := i + 10
+        if end > len(slots) {
+            end = len(slots)
+        }
+
+        rows := []models.ListItem{}
+        for j, slot := range slots[i:end] {
+            rows = append(rows, models.ListItem{
+                ID:    strconv.Itoa(i + j + 1), // sequential IDs 1,2,3,...
+                Title: slot,                    // e.g. "09:00"
+            })
+        }
+
+        sectionTitle := fmt.Sprintf("%s (Part %d)", title, (i/10)+1)
+        sections = append(sections, models.Section{Title: sectionTitle, Rows: rows})
+    }
+    return sections
+}
+
+
+
 func (wc *WhatsAppController) fetchAppointments(phone string) ([]Appointment, error) {
 
 	// 🔹 Force a fresh background context, safe timeout
@@ -899,7 +923,7 @@ func (wc *WhatsAppController) sendSlotsList(userID, doctor, date string) error {
 
 	doctorInt, err := strconv.Atoi(doctor)
 	if err != nil {
-		return fmt.Errorf("invalid departmentId: %v", err)
+		return fmt.Errorf("invalid doctorId: %v", err)
 	}
 
 	url := fmt.Sprintf(
@@ -913,41 +937,24 @@ func (wc *WhatsAppController) sendSlotsList(userID, doctor, date string) error {
 		return err
 	}
 
-	// Convert to your model
-	doctorAvailabilities := make([]Availability, len(apiResp.Data))
-	for i, d := range apiResp.Data {
-		doctorAvailabilities[i] = Availability{
-			ID:        d.AvailabilityID,
-			WeekType:  d.WeekType,
-			DayOfWeek: d.DayOfWeek,
-			Start:     d.AvailableTimeStart,
-			End:       d.AvailableTimeEnd,
-		}
-	}
-
-	b, _ := json.MarshalIndent(doctorAvailabilities, "", "  ")
-	log.Println("doctors", string(b))
-
-	// Build WhatsApp list items
-	rows := make([]models.ListItem, 0, len(doctorAvailabilities))
-    counter := 1
-    
-	// Assuming apiResp.Data contains the availability
+	// Collect all 15-min slots
+	allSlots := []string{}
 	for _, avail := range apiResp.Data {
 		slots, err := generateTimeSlots(avail.AvailableTimeStart, avail.AvailableTimeEnd)
 		if err != nil {
 			log.Println("Error generating slots:", err)
 			continue
 		}
-
-		for _, slot := range slots {
-			rows = append(rows, models.ListItem{
-				ID:    strconv.Itoa(counter),  
-				Title:       slot,                                             // e.g. "09:00"
-				Description: fmt.Sprintf("%s - %s", avail.DayOfWeek, avail.WeekType),
-			})
-		}
+		allSlots = append(allSlots, slots...)
 	}
+
+	if len(allSlots) == 0 {
+		_ = wc.whatsappService.SendTextMessage(userID, "❌ No available slots found for this doctor.")
+		return nil
+	}
+
+	// Split into sections (max 10 rows per section, max 10 sections)
+	sections := chunkSlotsIntoSections(allSlots, "Available Slots")
 
 	interactive := &models.InteractiveMessage{
 		Type: "list",
@@ -958,16 +965,17 @@ func (wc *WhatsAppController) sendSlotsList(userID, doctor, date string) error {
 		Body: &models.InteractiveBody{
 			Text: "Please choose a time slot:",
 		},
+		Footer: &models.InteractiveFooter{
+			Text: "Clinic Support",
+		},
 		Action: &models.InteractiveAction{
-			Button: "Choose Slot",
-			Sections: []models.Section{
-				{Title: "Available Slots", Rows: rows},
-			},
+			Button:   "Choose Slot",
+			Sections: sections,
 		},
 	}
 	return wc.whatsappService.SendInteractiveMessage(userID, interactive)
-
 }
+
 
 // ========================
 // Main Menu Buttons
