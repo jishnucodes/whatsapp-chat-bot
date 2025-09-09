@@ -420,25 +420,25 @@ func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message
 			}
 
 			if message.Interactive.ListReply != nil {
-			    apptID := message.Interactive.ListReply.ID
-                log.Println("Appointment id: ", apptID)
-			    details, err := wc.getAppointmentDetails(apptID)
+				apptID := message.Interactive.ListReply.ID
+				log.Println("Appointment id: ", apptID)
+				details, err := wc.getAppointmentDetails(apptID)
 
-                if err != nil {
-                    log.Println("Error fetching appointment details:", err)
-                    _ = wc.whatsappService.SendTextMessage(userID, "⚠️ Failed to fetch appointment details. Try again later.")
-                    _ = wc.sendMainMenu(userID)
-                    return
-                }
+				if err != nil {
+					log.Println("Error fetching appointment details:", err)
+					_ = wc.whatsappService.SendTextMessage(userID, "⚠️ Failed to fetch appointment details. Try again later.")
+					_ = wc.sendMainMenu(userID)
+					return
+				}
 
-			    if details != "" {
-			        _ = wc.whatsappService.SendTextMessage(userID, details)
-			    } else {
-			        _ = wc.whatsappService.SendTextMessage(userID, "❓ Appointment not found.")
-			    }
+				if details != "" {
+					_ = wc.whatsappService.SendTextMessage(userID, details)
+				} else {
+					_ = wc.whatsappService.SendTextMessage(userID, "❓ Appointment not found.")
+				}
 
-			    _ = wc.sendMainMenu(userID)
-			    return
+				_ = wc.sendMainMenu(userID)
+				return
 			}
 
 			// if message.Interactive.ListReply != nil {
@@ -464,12 +464,12 @@ func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message
 // Appointment API Call
 // ========================
 type Appointment struct {
-	ID     int    `json:"appointmentId"`
-	Doctor int    `json:"doctorId"` // You can later map this to doctor name if needed
-    DoctorName string `json:"doctorName"`
-    TokenNumber  int  `json:"tokenNumber"`
-	Date   string `json:"date"`
-	Time   string `json:"time"`
+	ID          int    `json:"appointmentId"`
+	Doctor      int    `json:"doctorId"` // You can later map this to doctor name if needed
+	DoctorName  string `json:"doctorName"`
+	TokenNumber int    `json:"tokenNumber"`
+	Date        string `json:"date"`
+	Time        string `json:"time"`
 }
 
 // Raw API response struct
@@ -480,10 +480,10 @@ type apiResponse struct {
 	Data       []struct {
 		AppointmentID       int    `json:"appointmentId"`
 		DoctorID            int    `json:"doctorId"`
-        DoctorName          string `json:"doctorName"`
+		DoctorName          string `json:"doctorName"`
 		AppointmentDateTime string `json:"appointmentDateTime"`
-        TimeSlot            string `json:"timeSlot"`
-        TokenNumber         int    `json:"tokenNumber"`
+		TimeSlot            string `json:"timeSlot"`
+		TokenNumber         int    `json:"tokenNumber"`
 	} `json:"data"`
 }
 
@@ -509,12 +509,19 @@ func (wc *WhatsAppController) fetchAppointments(phone string) ([]Appointment, er
 			return nil, fmt.Errorf("failed to parse appointmentDateTime: %w", err)
 		}
 
+		var timeStr string
+		if d.TimeSlot != "" {
+			timeStr = d.TimeSlot
+		} else {
+			timeStr = t.Format("15:04")
+		}
+
 		appointments[i] = Appointment{
-			ID:     d.AppointmentID,
-			Doctor: d.DoctorID,
-            DoctorName: d.DoctorName,
-			Date:   t.Format("2006-01-02"),
-			Time:   d.TimeSlot,
+			ID:         d.AppointmentID,
+			Doctor:     d.DoctorID,
+			DoctorName: d.DoctorName,
+			Date:       t.Format("2006-01-02"),
+			Time:       timeStr,
 		}
 	}
 
@@ -570,41 +577,40 @@ func (wc *WhatsAppController) sendAppointmentsList(to string, appointments []App
 // Appointment Details
 // ========================
 func (wc *WhatsAppController) getAppointmentDetails(apptID string) (string, error) {
-    // Context with timeout
-    ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-    defer cancel()
+	// Context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
 
-    url := fmt.Sprintf("http://61.2.142.81:8086/api/appointment/get-by-id?appointmentId=%s", apptID)
+	url := fmt.Sprintf("http://61.2.142.81:8086/api/appointment/get-by-id?appointmentId=%s", apptID)
 
-    var apiResp apiResponse
-    if err := callExternalAPI(ctx, url, &apiResp); err != nil {
-        log.Println("API fetching error", err)
-        return "", err
-    }
+	var apiResp apiResponse
+	if err := callExternalAPI(ctx, url, &apiResp); err != nil {
+		log.Println("API fetching error", err)
+		return "", err
+	}
 
-    if len(apiResp.Data) == 0 {
-        return "❓ Appointment not found.", nil
-    }
+	if len(apiResp.Data) == 0 {
+		return "❓ Appointment not found.", nil
+	}
 
-    d := apiResp.Data[0] // since it's a single appointment by ID
+	d := apiResp.Data[0] // since it's a single appointment by ID
 
-    t, err := time.Parse("2006-01-02T15:04:05", d.AppointmentDateTime)
-    if err != nil {
-        return "", fmt.Errorf("failed to parse appointmentDateTime: %w", err)
-    }
+	t, err := time.Parse("2006-01-02T15:04:05", d.AppointmentDateTime)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse appointmentDateTime: %w", err)
+	}
 
-    // ✅ Format a WhatsApp-friendly message
-    msg := fmt.Sprintf(
-        "✅ Appointment Details\n👨‍⚕️ Doctor: %s\n📅 Date: %s\n⏰ Time: %s\n🔢 Token: %d",
-        d.DoctorName,
-        t.Format("2006-01-02"),
-        d.TimeSlot,
-        d.TokenNumber,
-    )
+	// ✅ Format a WhatsApp-friendly message
+	msg := fmt.Sprintf(
+		"✅ Appointment Details\n👨‍⚕️ Doctor: %s\n📅 Date: %s\n⏰ Time: %s\n🔢 Token: %d",
+		d.DoctorName,
+		t.Format("2006-01-02"),
+		d.TimeSlot,
+		d.TokenNumber,
+	)
 
-    return msg, nil
+	return msg, nil
 }
-
 
 // ========================
 // Main Menu Buttons
