@@ -917,7 +917,6 @@ func (wc *WhatsAppController) sendDoctorsList(userID, dept, date string) error {
 }
 
 func (wc *WhatsAppController) sendSlotsList(userID, doctor, date string) error {
-	// 🔹 Context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
@@ -937,7 +936,7 @@ func (wc *WhatsAppController) sendSlotsList(userID, doctor, date string) error {
 		return err
 	}
 
-	// Collect all 15-min slots
+	// Collect all slots
 	allSlots := []string{}
 	for _, avail := range apiResp.Data {
 		slots, err := generateTimeSlots(avail.AvailableTimeStart, avail.AvailableTimeEnd)
@@ -953,28 +952,48 @@ func (wc *WhatsAppController) sendSlotsList(userID, doctor, date string) error {
 		return nil
 	}
 
-	// Split into sections (max 10 rows per section, max 10 sections)
-	sections := chunkSlotsIntoSections(allSlots, "Available Slots")
+	// 🔹 Paginate: send one message per 10 slots
+	pageSize := 10
+	for i := 0; i < len(allSlots); i += pageSize {
+		end := i + pageSize
+		if end > len(allSlots) {
+			end = len(allSlots)
+		}
 
-	interactive := &models.InteractiveMessage{
-		Type: "list",
-		Header: &models.MessageHeader{
-			Type: "text",
-			Text: "⏰ Available Time Slots",
-		},
-		Body: &models.InteractiveBody{
-			Text: "Please choose a time slot:",
-		},
-		Footer: &models.InteractiveFooter{
-			Text: "Clinic Support",
-		},
-		Action: &models.InteractiveAction{
-			Button:   "Choose Slot",
-			Sections: sections,
-		},
+		rows := []models.ListItem{}
+		for j, slot := range allSlots[i:end] {
+			rows = append(rows, models.ListItem{
+				ID:    strconv.Itoa(i + j + 1),
+				Title: slot,
+			})
+		}
+
+		section := models.Section{Title: fmt.Sprintf("Slots %d - %d", i+1, end), Rows: rows}
+
+		interactive := &models.InteractiveMessage{
+			Type: "list",
+			Header: &models.MessageHeader{
+				Type: "text",
+				Text: "⏰ Available Time Slots",
+			},
+			Body: &models.InteractiveBody{
+				Text: fmt.Sprintf("Please choose a time slot (Page %d):", (i/pageSize)+1),
+			},
+			Action: &models.InteractiveAction{
+				Button:   "Choose Slot",
+				Sections: []models.Section{section},
+			},
+		}
+
+		// send each page separately
+		if err := wc.whatsappService.SendInteractiveMessage(userID, interactive); err != nil {
+			return err
+		}
 	}
-	return wc.whatsappService.SendInteractiveMessage(userID, interactive)
+
+	return nil
 }
+
 
 
 // ========================
