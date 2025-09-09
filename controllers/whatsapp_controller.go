@@ -534,7 +534,7 @@ func (wc *WhatsAppController) sendAppointmentsList(to string, appointments []App
 		rows = append(rows, models.ListItem{
 			ID:          strconv.Itoa(appt.ID),
 			Title:       fmt.Sprintf("Dr. %s", appt.DoctorName),
-			Description: fmt.Sprintf("Time: %s", appt.Time),
+			Description: fmt.Sprintf("Date: %s, Time: %s", appt.Date, appt.Time),
 		})
 	}
 
@@ -574,7 +574,7 @@ func (wc *WhatsAppController) getAppointmentDetails(apptID string) (string, erro
     ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
     defer cancel()
 
-    url := fmt.Sprintf("http://192.168.1.10:8086/api/appointment/get-by-id?appointmentId=%s", apptID)
+    url := fmt.Sprintf("http://61.2.142.81:8086/api/appointment/get-by-id?appointmentId=%s", apptID)
 
     var apiResp apiResponse
     if err := callExternalAPI(ctx, url, &apiResp); err != nil {
