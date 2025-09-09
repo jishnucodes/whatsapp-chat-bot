@@ -513,7 +513,7 @@ func (wc *WhatsAppController) fetchAppointments(phone string) ([]Appointment, er
 		if d.TimeSlot != "" {
 			timeStr = d.TimeSlot
 		} else {
-			timeStr = t.Format("15:04")
+			timeStr = t.Format("03:04 PM")
 		}
 
 		appointments[i] = Appointment{
