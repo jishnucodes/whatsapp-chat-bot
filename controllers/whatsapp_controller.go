@@ -109,18 +109,6 @@ func callExternalAPI[T any](ctx context.Context, url string, target *T) error {
 	return nil
 }
 
-// Pretend API check for patient code
-func (wc *WhatsAppController) verifyPatientCode(code string) (bool, AppointmentData) {
-	if code == "P123" {
-		return true, AppointmentData{
-			Name:    "John Doe",
-			Phone:   "+919876543210",
-			Address: "123 Main Street",
-		}
-	}
-	return false, AppointmentData{}
-}
-
 // Mock departments
 func (wc *WhatsAppController) sendDepartmentsList(userID string) error {
 	depts := []models.ListItem{
@@ -189,17 +177,20 @@ func (wc *WhatsAppController) createAppointment(data *AppointmentData) bool {
 func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID string, message models.WhatsAppMessage) {
 	state, exists := appointmentState[userID]
 	if !exists {
-		appointmentState[userID] = &AppointmentData{Step: "ask_patient_code"}
-		_ = wc.whatsappService.SendTextMessage(userID, "🆕 Do you have a patient code? (Yes/No)")
+		appointmentState[userID] = &AppointmentData{Step: "ask_patient_code_or_phone_number"}
+		_ = wc.whatsappService.SendTextMessage(
+			userID,
+			"🩺 Have you already consulted here before? (Yes/No)",
+		)
 		return
 	}
 
 	switch state.Step {
-	case "ask_patient_code":
+	case "ask_patient_code_or_phone_number":
 		if message.Type == "text" && message.Text != nil {
 			ans := strings.ToLower(strings.TrimSpace(message.Text.Body))
 			if ans == "yes" {
-				state.Step = "await_patient_code"
+				state.Step = "await_patient_code_or_phone_number"
 				_ = wc.whatsappService.SendTextMessage(userID, "📋 Please enter your patient code:")
 			} else if ans == "no" {
 				state.Step = "await_patient_name"
@@ -209,18 +200,50 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 			}
 		}
 
-	case "await_patient_code":
-		state.PatientCode = message.Text.Body
-		valid, details := wc.verifyPatientCode(state.PatientCode)
-		if !valid {
-			_ = wc.whatsappService.SendTextMessage(userID, "❌ Invalid patient code. Please try again.")
+	case "await_patient_code_or_phone_number":
+		code := strings.TrimSpace(message.Text.Body)
+		patients, err := wc.verifyPatientCode(code)
+		if err != nil || len(patients) == 0 {
+			_ = wc.whatsappService.SendTextMessage(userID, "❌ No patient found. Please try again.")
 			return
 		}
-		state.Name = details.Name
-		state.Phone = details.Phone
-		state.Address = details.Address
+
+		if len(patients) > 1 {
+			state.Step = "choose_patient_from_list"
+			_ = wc.sendPatientDetailsList(userID, patients)
+			return
+		}
+
+		// If exactly one patient found, save directly
+		patient := patients[0]
+		state.PatientCode = patient.PatientCode
+		state.Name = fmt.Sprintf("%s %s", patient.FirstName, patient.LastName)
+		state.Phone = patient.MobileNumber
 		state.Step = "choose_department"
+
 		_ = wc.sendDepartmentsList(userID)
+
+	case "choose_patient_from_list":
+		if message.Interactive != nil && message.Interactive.ListReply != nil {
+			selectedID := message.Interactive.ListReply.ID
+
+			// 🔹 Call API again with selected ID/Code
+			selectedPatients, err := wc.verifyPatientCode(selectedID)
+			if err != nil || len(selectedPatients) == 0 {
+				_ = wc.whatsappService.SendTextMessage(userID, "❌ Could not fetch patient details. Please try again.")
+				return
+			}
+
+			patient := selectedPatients[0]
+
+			// Save only the chosen patient details
+			state.PatientCode = patient.PatientCode
+			state.Name = fmt.Sprintf("%s %s", patient.FirstName, patient.LastName)
+			state.Phone = patient.MobileNumber
+			state.Step = "choose_department"
+
+			_ = wc.sendDepartmentsList(userID)
+		}
 
 	case "await_patient_name":
 		state.Name = message.Text.Body
@@ -487,6 +510,31 @@ type apiResponse struct {
 	} `json:"data"`
 }
 
+type Patient struct {
+	ID           int    `json:"patientId"`
+	PatientCode  string `json:"patientCode"` // You can later map this to doctor name if needed
+	Salutation   string `json:"salutation"`
+	FirstName    string `json:"firstName"`
+	LastName     string `json:"lastName"`
+	DateOfBirth  string `json:"dateOfBirth"`
+	MobileNumber string `json:"mobileNumber"`
+}
+
+type apiPatientResponse struct {
+	Status     bool   `json:"status"`
+	StatusCode int    `json:"statusCode"`
+	Message    string `json:"message"`
+	Data       []struct {
+		PatientID    int    `json:"patientId"`
+		PatientCode  string `json:"patientCode"`
+		Salutation   string `json:"salutation"`
+		FirstName    string `json:"firstName"`
+		LastName     string `json:"lastName"`
+		DateOfBirth  string `json:"dateOfBirth"`
+		MobileNumber string `json:"mobileNumber"`
+	} `json:"data"`
+}
+
 func (wc *WhatsAppController) fetchAppointments(phone string) ([]Appointment, error) {
 
 	// 🔹 Force a fresh background context, safe timeout
@@ -617,6 +665,92 @@ func (wc *WhatsAppController) getAppointmentDetails(apptID string) (string, erro
 	)
 
 	return msg, nil
+}
+
+// ==============================================
+// Fetching Patient Details By Code Or Phone number
+// ===============================================
+
+func (wc *WhatsAppController) verifyPatientCode(code string) ([]Patient, error) {
+
+	// 🔹 Force a fresh background context, safe timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	url := fmt.Sprintf("http://61.2.142.81:8086/api/patient/search?userInput=%s", code)
+
+	var apiResp apiPatientResponse
+	if err := callExternalAPI(ctx, url, &apiResp); err != nil {
+		log.Println("API fetching error", err)
+		return nil, err
+	}
+
+	// Convert to your model
+	patients := make([]Patient, len(apiResp.Data))
+	for i, d := range apiResp.Data {
+
+		patients[i] = Patient{
+			ID:           d.PatientID,
+			PatientCode:  d.PatientCode,
+			Salutation:   d.Salutation,
+			FirstName:    d.FirstName,
+			LastName:     d.LastName,
+			DateOfBirth:  d.DateOfBirth,
+			MobileNumber: d.MobileNumber,
+		}
+	}
+
+	b, _ := json.MarshalIndent(patients, "", "  ")
+	log.Println("Patients", string(b))
+
+	return patients, nil
+	// if code == "P123" {
+	// 	return true, AppointmentData{
+	// 		Name:    "John Doe",
+	// 		Phone:   "+919876543210",
+	// 		Address: "123 Main Street",
+	// 	}
+	// }
+	// return false, AppointmentData{}
+}
+
+func (wc *WhatsAppController) sendPatientDetailsList(to string, patients []Patient) error {
+	rows := make([]models.ListItem, 0, len(patients))
+
+	for _, appt := range patients {
+		rows = append(rows, models.ListItem{
+			ID:          strconv.Itoa(appt.ID),
+			Title:       fmt.Sprintf("%s %s", appt.FirstName, appt.LastName),
+			Description: fmt.Sprintf("Patient Code: %s", appt.PatientCode),
+		})
+	}
+
+	sections := []models.Section{
+		{
+			Title: "Following are the related search results",
+			Rows:  rows,
+		},
+	}
+
+	interactive := &models.InteractiveMessage{
+		Type: "list",
+		Header: &models.MessageHeader{
+			Type: "text",
+			Text: "📅 Patient Details",
+		},
+		Body: &models.InteractiveBody{
+			Text: "Choose one patient for appointment:",
+		},
+		Footer: &models.InteractiveFooter{
+			Text: "Clinic Support",
+		},
+		Action: &models.InteractiveAction{
+			Button:   "Choose Patient",
+			Sections: sections,
+		},
+	}
+
+	return wc.whatsappService.SendInteractiveMessage(to, interactive)
 }
 
 // ========================
