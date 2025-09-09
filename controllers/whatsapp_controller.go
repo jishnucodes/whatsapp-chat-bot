@@ -535,6 +535,14 @@ type apiPatientResponse struct {
 	} `json:"data"`
 }
 
+
+func truncate(str string, max int) string {
+    if len(str) <= max {
+        return str
+    }
+    return str[:max-1] + "…" // add ellipsis
+}
+
 func (wc *WhatsAppController) fetchAppointments(phone string) ([]Appointment, error) {
 
 	// 🔹 Force a fresh background context, safe timeout
@@ -717,12 +725,15 @@ func (wc *WhatsAppController) verifyPatientCode(code string) ([]Patient, error) 
 func (wc *WhatsAppController) sendPatientDetailsList(to string, patients []Patient) error {
 	rows := make([]models.ListItem, 0, len(patients))
 
+    
 	for _, appt := range patients {
+        fullName := fmt.Sprintf("%s %s", appt.FirstName, appt.LastName)
+        
 		rows = append(rows, models.ListItem{
-			ID:          strconv.Itoa(appt.ID),
-			Title:       fmt.Sprintf("%s %s", appt.FirstName, appt.LastName),
-			Description: fmt.Sprintf("Patient Code: %s", appt.PatientCode),
-		})
+        ID:          strconv.Itoa(appt.ID),
+        Title:       truncate(fullName, 24), // short for list
+        Description: truncate(fmt.Sprintf("Patient Code: %s | %s", appt.PatientCode, fullName), 72),
+    })
 	}
 
 	sections := []models.Section{
