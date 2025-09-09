@@ -600,12 +600,19 @@ func (wc *WhatsAppController) getAppointmentDetails(apptID string) (string, erro
 		return "", fmt.Errorf("failed to parse appointmentDateTime: %w", err)
 	}
 
+	var timeStr string
+	if d.TimeSlot != "" {
+		timeStr = d.TimeSlot
+	} else {
+		timeStr = t.Format("03:04 PM")
+	}
+
 	// ✅ Format a WhatsApp-friendly message
 	msg := fmt.Sprintf(
 		"✅ Appointment Details\n👨‍⚕️ Doctor: %s\n📅 Date: %s\n⏰ Time: %s\n🔢 Token: %d",
 		d.DoctorName,
 		t.Format("2006-01-02"),
-		d.TimeSlot,
+		timeStr,
 		d.TokenNumber,
 	)
 
