@@ -110,25 +110,6 @@ func callExternalAPI[T any](ctx context.Context, url string, target *T) error {
 	return nil
 }
 
-// Mock doctors
-func (wc *WhatsAppController) sendDoctorsList(userID, dept, date string) error {
-	doctors := []models.ListItem{
-		{ID: "dr_smith", Title: "Dr. Smith"},
-		{ID: "dr_jones", Title: "Dr. Jones"},
-	}
-	interactive := &models.InteractiveMessage{
-		Type: "list",
-		Body: &models.InteractiveBody{Text: "Select a doctor"},
-		Action: &models.InteractiveAction{
-			Button: "Choose",
-			Sections: []models.Section{
-				{Title: "Doctors", Rows: doctors},
-			},
-		},
-	}
-	return wc.whatsappService.SendInteractiveMessage(userID, interactive)
-}
-
 // Mock slots
 func (wc *WhatsAppController) sendSlotsList(userID, doctor, date string) error {
 	slots := []models.ListItem{
@@ -533,6 +514,22 @@ type apiDepartmentResponse struct {
 	} `json:"data"`
 }
 
+type Doctor struct {
+	ID         int    `json:"employeeId"`
+	DoctorName string `json:"doctorName"`
+}
+
+type apiDoctorResponse struct {
+	Status     bool   `json:"status"`
+	StatusCode int    `json:"statusCode"`
+	Message    string `json:"message"`
+	Data       []struct {
+		EmployeeID int    `json:"employeeId"`
+		FirstName  string `json:"firstName"`
+		LastName   string `json:"lastName"`
+	} `json:"data"`
+}
+
 func truncate(str string, max int) string {
 	if len(str) <= max {
 		return str
@@ -779,21 +776,21 @@ func (wc *WhatsAppController) sendDepartmentsList(userID string) error {
 	for i, d := range apiResp.Data {
 
 		departments[i] = Department{
-			ID:         d.DepartmentID,
-			DepartmentName:     d.DepartmentName,
+			ID:             d.DepartmentID,
+			DepartmentName: d.DepartmentName,
 		}
 	}
 
 	b, _ := json.MarshalIndent(departments, "", "  ")
 	log.Println("departments", string(b))
 
-    rows := make([]models.ListItem, 0, len(departments))
+	rows := make([]models.ListItem, 0, len(departments))
 
 	for _, dept := range departments {
-	
+
 		rows = append(rows, models.ListItem{
-			ID:          strconv.Itoa(dept.ID),
-			Title:       dept.DepartmentName,
+			ID:    strconv.Itoa(dept.ID),
+			Title: dept.DepartmentName,
 		})
 	}
 
@@ -804,6 +801,62 @@ func (wc *WhatsAppController) sendDepartmentsList(userID string) error {
 			Button: "Choose",
 			Sections: []models.Section{
 				{Title: "Departments", Rows: rows},
+			},
+		},
+	}
+	return wc.whatsappService.SendInteractiveMessage(userID, interactive)
+}
+
+func (wc *WhatsAppController) sendDoctorsList(userID, dept, date string) error {
+	// 🔹 Force a fresh background context, safe timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	deptInt, err := strconv.Atoi(dept)
+	if err != nil {
+		return fmt.Errorf("invalid departmentId: %v", err)
+	}
+	url := fmt.Sprintf(
+		"http://61.2.142.81:8086/api/doctor/list?employeeType=%d&departmentId=%d&date=%s",
+		1, deptInt, date,
+	)
+
+	var apiResp apiDoctorResponse
+	if err := callExternalAPI(ctx, url, &apiResp); err != nil {
+		log.Println("API fetching error", err)
+		return err
+	}
+
+	// Convert to your model
+	doctors := make([]Doctor, len(apiResp.Data))
+	for i, d := range apiResp.Data {
+
+		doctors[i] = Doctor{
+			ID:         d.EmployeeID,
+			DoctorName: fmt.Sprintf("%s %s", d.FirstName, d.LastName),
+		}
+	}
+
+	b, _ := json.MarshalIndent(doctors, "", "  ")
+	log.Println("doctors", string(b))
+
+	rows := make([]models.ListItem, 0, len(doctors))
+
+	for _, doctor := range doctors {
+
+		rows = append(rows, models.ListItem{
+			ID:          strconv.Itoa(doctor.ID),
+			Description: doctor.DoctorName,
+		})
+	}
+
+	interactive := &models.InteractiveMessage{
+		Type: "list",
+		Body: &models.InteractiveBody{Text: "Please select a doctor"},
+		Action: &models.InteractiveAction{
+			Button: "Choose",
+			Sections: []models.Section{
+				{Title: "Doctors", Rows: rows},
 			},
 		},
 	}
