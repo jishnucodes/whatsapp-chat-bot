@@ -808,7 +808,7 @@ func (wc *WhatsAppController) sendDepartmentsList(userID string) error {
 }
 
 func (wc *WhatsAppController) sendDoctorsList(userID, dept, date string) error {
-	// 🔹 Force a fresh background context, safe timeout
+	// 🔹 Context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
@@ -816,6 +816,7 @@ func (wc *WhatsAppController) sendDoctorsList(userID, dept, date string) error {
 	if err != nil {
 		return fmt.Errorf("invalid departmentId: %v", err)
 	}
+
 	url := fmt.Sprintf(
 		"http://61.2.142.81:8086/api/doctor/list?employeeType=%d&departmentId=%d&date=%s",
 		1, deptInt, date,
@@ -830,7 +831,6 @@ func (wc *WhatsAppController) sendDoctorsList(userID, dept, date string) error {
 	// Convert to your model
 	doctors := make([]Doctor, len(apiResp.Data))
 	for i, d := range apiResp.Data {
-
 		doctors[i] = Doctor{
 			ID:         d.EmployeeID,
 			DoctorName: fmt.Sprintf("%s %s", d.FirstName, d.LastName),
@@ -840,28 +840,39 @@ func (wc *WhatsAppController) sendDoctorsList(userID, dept, date string) error {
 	b, _ := json.MarshalIndent(doctors, "", "  ")
 	log.Println("doctors", string(b))
 
+	// Build WhatsApp list items
 	rows := make([]models.ListItem, 0, len(doctors))
-
 	for _, doctor := range doctors {
-
 		rows = append(rows, models.ListItem{
-			ID:          strconv.Itoa(doctor.ID),
-			Description: doctor.DoctorName,
+			ID:    strconv.Itoa(doctor.ID),     // unique identifier for callback
+			Title: doctor.DoctorName,           // 👨‍⚕️ main label
+			// Description: "Some extra info",  // optional: specialization, timings etc.
 		})
 	}
 
 	interactive := &models.InteractiveMessage{
 		Type: "list",
-		Body: &models.InteractiveBody{Text: "Please select a doctor"},
+		Header: &models.MessageHeader{
+			Type: "text",
+			Text: "👨‍⚕️ Available Doctors",
+		},
+		Body: &models.InteractiveBody{
+			Text: "Please select a doctor from the list below:",
+		},
+		Footer: &models.InteractiveFooter{
+			Text: "Clinic Support",
+		},
 		Action: &models.InteractiveAction{
-			Button: "Choose",
+			Button: "Choose Doctor",
 			Sections: []models.Section{
 				{Title: "Doctors", Rows: rows},
 			},
 		},
 	}
+
 	return wc.whatsappService.SendInteractiveMessage(userID, interactive)
 }
+
 
 // ========================
 // Main Menu Buttons
