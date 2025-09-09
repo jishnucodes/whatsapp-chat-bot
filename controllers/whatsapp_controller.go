@@ -42,6 +42,7 @@ type Post struct {
 }
 
 type AppointmentData struct {
+	PatientID   int
 	PatientCode string
 	Name        string
 	Address     string
@@ -107,26 +108,6 @@ func callExternalAPI[T any](ctx context.Context, url string, target *T) error {
 	}
 
 	return nil
-}
-
-// Mock departments
-func (wc *WhatsAppController) sendDepartmentsList(userID string) error {
-	depts := []models.ListItem{
-		{ID: "cardiology", Title: "❤️ Cardiology"},
-		{ID: "dermatology", Title: "🩺 Dermatology"},
-		{ID: "pediatrics", Title: "👶 Pediatrics"},
-	}
-	interactive := &models.InteractiveMessage{
-		Type: "list",
-		Body: &models.InteractiveBody{Text: "Please select a department"},
-		Action: &models.InteractiveAction{
-			Button: "Choose",
-			Sections: []models.Section{
-				{Title: "Departments", Rows: depts},
-			},
-		},
-	}
-	return wc.whatsappService.SendInteractiveMessage(userID, interactive)
 }
 
 // Mock doctors
@@ -216,6 +197,7 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 
 		// If exactly one patient found, save directly
 		patient := patients[0]
+		state.PatientID = patient.ID
 		state.PatientCode = patient.PatientCode
 		state.Name = fmt.Sprintf("%s %s", patient.FirstName, patient.LastName)
 		state.Phone = patient.MobileNumber
@@ -237,6 +219,7 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 			patient := selectedPatients[0]
 
 			// Save only the chosen patient details
+			state.PatientID = patient.ID
 			state.PatientCode = patient.PatientCode
 			state.Name = fmt.Sprintf("%s %s", patient.FirstName, patient.LastName)
 			state.Phone = patient.MobileNumber
@@ -535,12 +518,26 @@ type apiPatientResponse struct {
 	} `json:"data"`
 }
 
+type Department struct {
+	ID             int    `json:"departmentId"`
+	DepartmentName string `json:"departmentName"`
+}
+
+type apiDepartmentResponse struct {
+	Status     bool   `json:"status"`
+	StatusCode int    `json:"statusCode"`
+	Message    string `json:"message"`
+	Data       []struct {
+		DepartmentID   int    `json:"departmentId"`
+		DepartmentName string `json:"departmentName"`
+	} `json:"data"`
+}
 
 func truncate(str string, max int) string {
-    if len(str) <= max {
-        return str
-    }
-    return str[:max-1] + "…" // add ellipsis
+	if len(str) <= max {
+		return str
+	}
+	return str[:max-1] + "…" // add ellipsis
 }
 
 func (wc *WhatsAppController) fetchAppointments(phone string) ([]Appointment, error) {
@@ -725,15 +722,14 @@ func (wc *WhatsAppController) verifyPatientCode(code string) ([]Patient, error) 
 func (wc *WhatsAppController) sendPatientDetailsList(to string, patients []Patient) error {
 	rows := make([]models.ListItem, 0, len(patients))
 
-    
 	for _, appt := range patients {
-        fullName := fmt.Sprintf("%s %s", appt.FirstName, appt.LastName)
+		fullName := fmt.Sprintf("%s %s", appt.FirstName, appt.LastName)
 
 		rows = append(rows, models.ListItem{
-        ID:          strconv.Itoa(appt.ID),
-        Title:       truncate(fullName, 24), // short for list
-        Description: truncate(fmt.Sprintf("Patient Code: %s | %s", appt.PatientCode, fullName), 72),
-    })
+			ID:          strconv.Itoa(appt.ID),
+			Title:       truncate(fullName, 24), // short for list
+			Description: truncate(fmt.Sprintf("Patient Code: %s | %s", appt.PatientCode, fullName), 72),
+		})
 	}
 
 	sections := []models.Section{
@@ -762,6 +758,56 @@ func (wc *WhatsAppController) sendPatientDetailsList(to string, patients []Patie
 	}
 
 	return wc.whatsappService.SendInteractiveMessage(to, interactive)
+}
+
+func (wc *WhatsAppController) sendDepartmentsList(userID string) error {
+
+	// 🔹 Force a fresh background context, safe timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	url := "http://61.2.142.81:8086/api/department/list"
+
+	var apiResp apiDepartmentResponse
+	if err := callExternalAPI(ctx, url, &apiResp); err != nil {
+		log.Println("API fetching error", err)
+		return err
+	}
+
+	// Convert to your model
+	departments := make([]Department, len(apiResp.Data))
+	for i, d := range apiResp.Data {
+
+		departments[i] = Department{
+			ID:         d.DepartmentID,
+			DepartmentName:     d.DepartmentName,
+		}
+	}
+
+	b, _ := json.MarshalIndent(departments, "", "  ")
+	log.Println("departments", string(b))
+
+    rows := make([]models.ListItem, 0, len(departments))
+
+	for _, dept := range departments {
+	
+		rows = append(rows, models.ListItem{
+			ID:          strconv.Itoa(dept.ID),
+			Title:       dept.DepartmentName,
+		})
+	}
+
+	interactive := &models.InteractiveMessage{
+		Type: "list",
+		Body: &models.InteractiveBody{Text: "Please select a department"},
+		Action: &models.InteractiveAction{
+			Button: "Choose",
+			Sections: []models.Section{
+				{Title: "Departments", Rows: rows},
+			},
+		},
+	}
+	return wc.whatsappService.SendInteractiveMessage(userID, interactive)
 }
 
 // ========================
