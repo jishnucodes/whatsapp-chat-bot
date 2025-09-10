@@ -959,6 +959,8 @@ func (wc *WhatsAppController) sendSlotsList(userID, doctor, date string) error {
 
 	if len(allSlots) == 0 {
 		_ = wc.whatsappService.SendTextMessage(userID, "❌ No available slots found for this doctor.")
+		delete(appointmentState, userID)
+		_ = wc.sendMainMenu(userID)
 		return nil
 	}
 
