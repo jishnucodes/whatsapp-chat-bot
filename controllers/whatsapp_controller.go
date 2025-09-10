@@ -162,15 +162,20 @@ func callExternalAPICallForPost[T any](ctx context.Context, method, url string, 
 		Message    string `json:"message"`
 		Error      string `json:"error"`
 	}
-	if err := json.Unmarshal(bodyBytes, &errResp); err == nil {
-		log.Println("error Response: ", errResp)
+	unMarshalError := json.Unmarshal(bodyBytes, &errResp)
+	if unMarshalError == nil {
+		log.Println("📩 error Response parsed: ", errResp)
 		if errResp.Message != "" {
-			log.Println("Error in appointment message: ", errResp.Message)
-			return errors.New(errResp.Message) // ✅ only return message
+			log.Println("⚠️ Appointment API Message: ", errResp.Message)
+			return errors.New(errResp.Message)
 		}
 		if errResp.Error != "" {
-			return errors.New(errResp.Error) // fallback if API uses "error"
+			log.Println("⚠️ Appointment API Error: ", errResp.Error)
+			return errors.New(errResp.Error)
 		}
+	} else {
+		// 👇 log the unmarshal failure
+		log.Printf("❌ Failed to unmarshal error response: %v. Raw body: %s", unMarshalError, string(bodyBytes))
 	}
 
 	// fallback if JSON not parsable
@@ -1169,7 +1174,6 @@ func (wc *WhatsAppController) createAppointment(data *AppointmentData, userID st
 		return false
 	}
 
-	
 	log.Printf("✅ Appointment created successfully: %+v", resp)
 	_ = wc.whatsappService.SendTextMessage(userID,
 		"✅ Appointment created successfully!")
