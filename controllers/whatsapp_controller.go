@@ -168,6 +168,8 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 		state.PatientCode = patient.PatientCode
 		state.PatientName = fmt.Sprintf("%s %s", patient.FirstName, patient.LastName)
 		state.PhoneNumber = patient.MobileNumber
+		state.Address = patient.Address
+		state.DateOfBirth = patient.DateOfBirth
 		state.Step = "choose_department"
 
 		_ = wc.sendDepartmentsList(userID)
@@ -192,6 +194,8 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 			state.PatientCode = patient.PatientCode
 			state.PatientName = fmt.Sprintf("%s %s", patient.FirstName, patient.LastName)
 			state.PhoneNumber = patient.MobileNumber
+			state.Address = patient.Address
+			state.DateOfBirth = patient.DateOfBirth
 			state.Step = "choose_department"
 
 			_ = wc.sendDepartmentsList(userID)
@@ -260,6 +264,7 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 				state.OnlineTempToken = uint(idInt) // ✅ assign to your uint field
 			}
 			state.TimeSlot = message.Interactive.ListReply.Title
+			state.CreatedFrom = message.From
 			success := wc.createAppointment(state)
 			if success {
 				_ = wc.whatsappService.SendTextMessage(userID,
