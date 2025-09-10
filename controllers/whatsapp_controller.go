@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
+	// "errors"
 
 	// "errors"
 	"io"
@@ -145,13 +145,12 @@ func callExternalAPICallForPost[T any](ctx context.Context, method, url string, 
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusCreated {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("API error: %s (status %d)", string(bodyBytes), resp.StatusCode)
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(target); err != nil {
-		return fmt.Errorf("failed to parse API response: %w", err)
+	// ✅ Treat 200 and 201 as success
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
+		if err := json.NewDecoder(resp.Body).Decode(target); err != nil {
+			return fmt.Errorf("failed to parse API response: %w", err)
+		}
+		return nil
 	}
 
 	// ❌ Handle error JSON
@@ -160,30 +159,16 @@ func callExternalAPICallForPost[T any](ctx context.Context, method, url string, 
 		Status     bool   `json:"status"`
 		StatusCode int    `json:"statusCode"`
 		Message    string `json:"message"`
-		Error      string `json:"error"`
 	}
-	unMarshalError := json.Unmarshal(bodyBytes, &errResp)
-	if unMarshalError == nil {
-		log.Println("📩 error Response parsed: ", errResp)
-		if errResp.Message != "" {
-			log.Println("⚠️ Appointment API Message: ", errResp.Message)
-			return errors.New(errResp.Message)
-		}
-		if errResp.Error != "" {
-			log.Println("⚠️ Appointment API Error: ", errResp.Error)
-			return errors.New(errResp.Error)
-		}
-	} else {
-		// 👇 log the unmarshal failure
-		log.Printf("❌ Failed to unmarshal error response: %v. Raw body: %s", unMarshalError, string(bodyBytes))
+	if err := json.Unmarshal(bodyBytes, &errResp); err == nil && errResp.Message != "" {
+		// return clean API error message
+		return fmt.Errorf(errResp.Message)
 	}
 
 	// fallback if JSON not parsable
-	// return fmt.Errorf("API error: %s (status %d)", string(bodyBytes), resp.StatusCode)
-	return fmt.Errorf(errResp.Error)
-
-	// return nil
+	return fmt.Errorf("API error: %s (status %d)", string(bodyBytes), resp.StatusCode)
 }
+
 
 func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID string, message models.WhatsAppMessage) {
 	state, exists := appointmentState[userID]
