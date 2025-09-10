@@ -2,8 +2,10 @@
 package controllers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+
 	// "errors"
 	"io"
 	"strconv"
@@ -114,11 +116,46 @@ func callExternalAPI[T any](ctx context.Context, url string, target *T) error {
 	return nil
 }
 
-// Mock appointment creation
-func (wc *WhatsAppController) createAppointment(data *AppointmentData) bool {
-	log.Printf("📅 Creating appointment: %+v", data)
-	return true // always success for mock
+func callExternalAPICallForPost[T any](ctx context.Context, method, url string, body interface{}, target *T) error {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	var reqBody io.Reader
+	if body != nil {
+		jsonBytes, err := json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("failed to marshal request body: %w", err)
+		}
+		reqBody = bytes.NewBuffer(jsonBytes)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to build API request: %w", err)
+	}
+
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("API request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("API error: %s (status %d)", string(bodyBytes), resp.StatusCode)
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(target); err != nil {
+		return fmt.Errorf("failed to parse API response: %w", err)
+	}
+
+	return nil
 }
+
 
 func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID string, message models.WhatsAppMessage) {
 	state, exists := appointmentState[userID]
@@ -265,7 +302,7 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 			}
 			state.TimeSlot = message.Interactive.ListReply.Title
 			state.CreatedFrom = message.From
-			success := wc.createAppointment(state)
+			success := wc.createAppointment(state, userID)
 			if success {
 				_ = wc.whatsappService.SendTextMessage(userID,
 					fmt.Sprintf("✅ Appointment booked with Dr. %s on %s at %s",
@@ -574,6 +611,15 @@ type apiDoctorAvailabilityResponse struct {
 		AvailabilityID     int    `json:"availabilityId"`
 		AvailableTimeStart string `json:"availableTimeStart"`
 		AvailableTimeEnd   string `json:"availableTimeEnd"`
+	} `json:"data"`
+}
+
+type apiAppointmentResponse struct {
+	Status     bool   `json:"status"`
+	StatusCode int    `json:"statusCode"`
+	Message    string `json:"message"`
+	Data       []struct {
+		TempAppointmentID int    `json:"tempAppointmentId"`
 	} `json:"data"`
 }
 
@@ -1068,6 +1114,32 @@ func (wc *WhatsAppController) sendSlotsList(userID string, doctor uint, date str
 
 	return nil
 }
+
+func (wc *WhatsAppController) createAppointment(data *AppointmentData, userID string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	url := "http://61.2.142.81:8086/api/tempAppointment/create" // 👈 replace with actual endpoint
+
+	var resp apiAppointmentResponse
+
+	err := callExternalAPICallForPost(ctx, http.MethodPost, url, data, &resp)
+	if err != nil {
+		log.Println("❌ Appointment API error:", err)
+		return false
+	}
+
+	if !resp.Status {
+		log.Printf("❌ Appointment creation failed: %s", resp.Message)
+		delete(appointmentState, userID)
+		_ = wc.sendMainMenu(userID)
+		return false
+	}
+
+	log.Printf("✅ Appointment created successfully: %+v", resp)
+	return true
+}
+
 
 // ========================
 // Main Menu Buttons
