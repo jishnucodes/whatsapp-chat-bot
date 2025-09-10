@@ -144,7 +144,7 @@ func callExternalAPICallForPost[T any](ctx context.Context, method, url string, 
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusCreated {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("API error: %s (status %d)", string(bodyBytes), resp.StatusCode)
 	}
