@@ -147,6 +147,8 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 		patients, err := wc.verifyPatientCode(code)
 		if err != nil || len(patients) == 0 {
 			_ = wc.whatsappService.SendTextMessage(userID, "❌ No patient found. Please try again.")
+			delete(appointmentState, userID)
+			_ = wc.sendMainMenu(userID)
 			return
 		}
 
@@ -174,6 +176,8 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 			selectedPatients, err := wc.verifyPatientCode(selectedID)
 			if err != nil || len(selectedPatients) == 0 {
 				_ = wc.whatsappService.SendTextMessage(userID, "❌ Could not fetch patient details. Please try again.")
+				delete(appointmentState, userID)
+				_ = wc.sendMainMenu(userID)
 				return
 			}
 
@@ -507,7 +511,7 @@ type apiDoctorResponse struct {
 		EmployeeID int    `json:"employeeId"`
 		FirstName  string `json:"firstName"`
 		LastName   string `json:"lastName"`
-		IsOnLeave  bool `json:"isOnLeave"`
+		IsOnLeave  bool   `json:"isOnLeave"`
 	} `json:"data"`
 }
 
@@ -882,7 +886,7 @@ func (wc *WhatsAppController) sendDoctorsList(userID, dept, date string) error {
 	// Convert to your model (only doctors not on leave)
 	doctors := make([]Doctor, 0)
 	for _, d := range apiResp.Data {
-		if !d.IsOnLeave { 
+		if !d.IsOnLeave {
 			doctors = append(doctors, Doctor{
 				ID:         d.EmployeeID,
 				DoctorName: fmt.Sprintf("Dr.%s %s", d.FirstName, d.LastName),
@@ -892,6 +896,13 @@ func (wc *WhatsAppController) sendDoctorsList(userID, dept, date string) error {
 
 	b, _ := json.MarshalIndent(doctors, "", "  ")
 	log.Println("doctors", string(b))
+
+	if len(doctors) == 0 {
+		_ = wc.whatsappService.SendTextMessage(userID, "❌ No doctors available in this department on the selected date.")
+		delete(appointmentState, userID)
+		_ = wc.sendMainMenu(userID)
+		return nil
+	}
 
 	// Build WhatsApp list items
 	rows := make([]models.ListItem, 0, len(doctors))
