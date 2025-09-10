@@ -164,6 +164,7 @@ func callExternalAPICallForPost[T any](ctx context.Context, method, url string, 
 	}
 	if err := json.Unmarshal(bodyBytes, &errResp); err == nil {
 		if errResp.Message != "" {
+			log.Println("Error in appointment message: ", errResp.Message)
 			return errors.New(errResp.Message) // ✅ only return message
 		}
 		if errResp.Error != "" {
