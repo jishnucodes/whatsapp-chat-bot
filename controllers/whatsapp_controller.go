@@ -1166,7 +1166,7 @@ func (wc *WhatsAppController) createAppointment(data *AppointmentData, userID st
 		return false
 	}
 
-	// ✅ Success
+	
 	log.Printf("✅ Appointment created successfully: %+v", resp)
 	_ = wc.whatsappService.SendTextMessage(userID,
 		"✅ Appointment created successfully!")
