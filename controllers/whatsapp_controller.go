@@ -507,6 +507,7 @@ type apiDoctorResponse struct {
 		EmployeeID int    `json:"employeeId"`
 		FirstName  string `json:"firstName"`
 		LastName   string `json:"lastName"`
+		IsOnLeave  bool `json:"isOnLeave"`
 	} `json:"data"`
 }
 
@@ -557,28 +558,26 @@ func generateTimeSlots(start, end string) ([]string, error) {
 }
 
 func chunkSlotsIntoSections(slots []string, title string) []models.Section {
-    sections := []models.Section{}
-    for i := 0; i < len(slots); i += 10 { // WhatsApp allows max 10 rows per section
-        end := i + 10
-        if end > len(slots) {
-            end = len(slots)
-        }
+	sections := []models.Section{}
+	for i := 0; i < len(slots); i += 10 { // WhatsApp allows max 10 rows per section
+		end := i + 10
+		if end > len(slots) {
+			end = len(slots)
+		}
 
-        rows := []models.ListItem{}
-        for j, slot := range slots[i:end] {
-            rows = append(rows, models.ListItem{
-                ID:    strconv.Itoa(i + j + 1), // sequential IDs 1,2,3,...
-                Title: slot,                    // e.g. "09:00"
-            })
-        }
+		rows := []models.ListItem{}
+		for j, slot := range slots[i:end] {
+			rows = append(rows, models.ListItem{
+				ID:    strconv.Itoa(i + j + 1), // sequential IDs 1,2,3,...
+				Title: slot,                    // e.g. "09:00"
+			})
+		}
 
-        sectionTitle := fmt.Sprintf("%s (Part %d)", title, (i/10)+1)
-        sections = append(sections, models.Section{Title: sectionTitle, Rows: rows})
-    }
-    return sections
+		sectionTitle := fmt.Sprintf("%s (Part %d)", title, (i/10)+1)
+		sections = append(sections, models.Section{Title: sectionTitle, Rows: rows})
+	}
+	return sections
 }
-
-
 
 func (wc *WhatsAppController) fetchAppointments(phone string) ([]Appointment, error) {
 
@@ -861,7 +860,7 @@ func (wc *WhatsAppController) sendDoctorsList(userID, dept, date string) error {
 	}
 
 	url := fmt.Sprintf(
-		"http://61.2.142.81:8086/api/doctor/list?employeeType=%d&departmentId=%d&date=%s",
+		"http://61.2.142.81:8086/api/doctor/list?employeeType=%d&departmentId=%d&inputDate=%s",
 		1, deptInt, date,
 	)
 
@@ -872,11 +871,22 @@ func (wc *WhatsAppController) sendDoctorsList(userID, dept, date string) error {
 	}
 
 	// Convert to your model
-	doctors := make([]Doctor, len(apiResp.Data))
-	for i, d := range apiResp.Data {
-		doctors[i] = Doctor{
-			ID:         d.EmployeeID,
-			DoctorName: fmt.Sprintf("%s %s", d.FirstName, d.LastName),
+	// doctors := make([]Doctor, len(apiResp.Data))
+	// for i, d := range apiResp.Data {
+	// 	doctors[i] = Doctor{
+	// 		ID:         d.EmployeeID,
+	// 		DoctorName: fmt.Sprintf("%s %s", d.FirstName, d.LastName),
+	// 	}
+	// }
+
+	// Convert to your model (only doctors not on leave)
+	doctors := make([]Doctor, 0)
+	for _, d := range apiResp.Data {
+		if !d.IsOnLeave { 
+			doctors = append(doctors, Doctor{
+				ID:         d.EmployeeID,
+				DoctorName: fmt.Sprintf("Dr.%s %s", d.FirstName, d.LastName),
+			})
 		}
 	}
 
@@ -993,8 +1003,6 @@ func (wc *WhatsAppController) sendSlotsList(userID, doctor, date string) error {
 
 	return nil
 }
-
-
 
 // ========================
 // Main Menu Buttons
