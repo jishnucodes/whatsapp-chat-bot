@@ -606,12 +606,17 @@ type apiDoctorResponse struct {
 	} `json:"data"`
 }
 
+type BookedSlotDTO struct {
+    TimeSlot string `json:"timeSlot"`
+}
+
 type Availability struct {
 	ID        int    `json:"availabilityId"`
 	DayOfWeek string `json:"dayOfWeek"`
 	WeekType  string `json:"weekType"`
 	Start     string `json:"availableTimeStart"`
 	End       string `json:"availableTimeEnd"`
+	BookedSlots        []BookedSlotDTO `json:"bookedSlots"`
 }
 
 type apiDoctorAvailabilityResponse struct {
@@ -624,6 +629,7 @@ type apiDoctorAvailabilityResponse struct {
 		AvailabilityID     int    `json:"availabilityId"`
 		AvailableTimeStart string `json:"availableTimeStart"`
 		AvailableTimeEnd   string `json:"availableTimeEnd"`
+		BookedSlots        []BookedSlotDTO `json:"bookedSlots"`
 	} `json:"data"`
 }
 
@@ -1042,11 +1048,6 @@ func (wc *WhatsAppController) sendSlotsList(userID string, doctor uint, date str
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	// doctorInt, err := strconv.Atoi(doctor)
-	// if err != nil {
-	// 	return fmt.Errorf("invalid doctorId: %v", err)
-	// }
-
 	url := fmt.Sprintf(
 		"http://61.2.142.81:8086/api/doctorAvailability/byDate?doctorId=%d&inputDate=%s",
 		doctor, date,
@@ -1058,17 +1059,39 @@ func (wc *WhatsAppController) sendSlotsList(userID string, doctor uint, date str
 		return err
 	}
 
-	// Collect all slots
+	// Collect all FREE slots
 	allSlots := []string{}
 	for _, avail := range apiResp.Data {
+		// 1. Generate all slots from available range
 		slots, err := generateTimeSlots(avail.AvailableTimeStart, avail.AvailableTimeEnd)
 		if err != nil {
 			log.Println("Error generating slots:", err)
 			continue
 		}
-		allSlots = append(allSlots, slots...)
+
+		// 2. Create map of booked slots for quick lookup
+		booked := make(map[string]bool)
+		for _, b := range avail.BookedSlots {
+			booked[b.TimeSlot] = true
+		}
+
+		// 3. Keep only slots that are NOT booked
+		for _, s := range slots {
+			// Reformat slot so it matches API booked format (e.g., "09:00 AM")
+			t, err := time.Parse("15:04", s)
+			if err != nil {
+				log.Println("Error parsing slot time:", s, err)
+				continue
+			}
+			formatted := t.Format("03:04 PM")
+
+			if !booked[formatted] {
+				allSlots = append(allSlots, formatted)
+			}
+		}
 	}
 
+	// No free slots
 	if len(allSlots) == 0 {
 		_ = wc.whatsappService.SendTextMessage(userID, "❌ No available slots found for this doctor.")
 		delete(appointmentState, userID)
@@ -1086,19 +1109,9 @@ func (wc *WhatsAppController) sendSlotsList(userID string, doctor uint, date str
 
 		rows := []models.ListItem{}
 		for j, slot := range allSlots[i:end] {
-			// Parse slot assuming it's "15:04" (24hr format string)
-			t, err := time.Parse("15:04", slot)
-			if err != nil {
-				log.Println("Error parsing slot time:", slot, err)
-				continue
-			}
-
-			// Format to 12hr with AM/PM
-			formattedSlot := t.Format("03:04 PM")
-
 			rows = append(rows, models.ListItem{
 				ID:    strconv.Itoa(i + j + 1),
-				Title: formattedSlot,
+				Title: slot, // already formatted
 			})
 		}
 
@@ -1128,6 +1141,7 @@ func (wc *WhatsAppController) sendSlotsList(userID string, doctor uint, date str
 	return nil
 }
 
+
 func (wc *WhatsAppController) createAppointment(data *AppointmentData, userID string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -1143,8 +1157,8 @@ func (wc *WhatsAppController) createAppointment(data *AppointmentData, userID st
 			fmt.Sprintf("⚠️ Appointment could not be created: %s", err.Error()))
 
 		log.Println("❌ Appointment API error:", err)
-		delete(appointmentState, userID)
-		_ = wc.sendMainMenu(userID)
+		// delete(appointmentState, userID)
+		// _ = wc.sendMainMenu(userID)
 		return false
 	}
 
