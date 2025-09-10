@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 
 	// "errors"
 	"io"
@@ -159,11 +160,15 @@ func callExternalAPICallForPost[T any](ctx context.Context, method, url string, 
 		Status     bool   `json:"status"`
 		StatusCode int    `json:"statusCode"`
 		Message    string `json:"message"`
-		Data       any    `json:"data"`
+		Error      string `json:"error"`
 	}
-	if err := json.Unmarshal(bodyBytes, &errResp); err == nil && errResp.Message != "" {
-		// return clean API error message
-		return fmt.Errorf(errResp.Message)
+	if err := json.Unmarshal(bodyBytes, &errResp); err == nil {
+		if errResp.Message != "" {
+			return errors.New(errResp.Message) // ✅ only return message
+		}
+		if errResp.Error != "" {
+			return errors.New(errResp.Error) // fallback if API uses "error"
+		}
 	}
 
 	// fallback if JSON not parsable
@@ -171,7 +176,6 @@ func callExternalAPICallForPost[T any](ctx context.Context, method, url string, 
 
 	// return nil
 }
-
 
 func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID string, message models.WhatsAppMessage) {
 	state, exists := appointmentState[userID]
@@ -635,7 +639,7 @@ type apiAppointmentResponse struct {
 	StatusCode int    `json:"statusCode"`
 	Message    string `json:"message"`
 	Data       []struct {
-		TempAppointmentID int    `json:"tempAppointmentId"`
+		TempAppointmentID int `json:"tempAppointmentId"`
 	} `json:"data"`
 }
 
@@ -1168,8 +1172,6 @@ func (wc *WhatsAppController) createAppointment(data *AppointmentData, userID st
 		"✅ Appointment created successfully!")
 	return true
 }
-
-
 
 // ========================
 // Main Menu Buttons
