@@ -173,7 +173,8 @@ func callExternalAPICallForPost[T any](ctx context.Context, method, url string, 
 	}
 
 	// fallback if JSON not parsable
-	return fmt.Errorf("API error: %s (status %d)", string(bodyBytes), resp.StatusCode)
+	// return fmt.Errorf("API error: %s (status %d)", string(bodyBytes), resp.StatusCode)
+	return fmt.Errorf(errResp.Error)
 
 	// return nil
 }
