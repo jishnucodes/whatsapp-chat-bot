@@ -159,6 +159,7 @@ func callExternalAPICallForPost[T any](ctx context.Context, method, url string, 
 		Status     bool   `json:"status"`
 		StatusCode int    `json:"statusCode"`
 		Message    string `json:"message"`
+		Data       any    `json:"data"`
 	}
 	if err := json.Unmarshal(bodyBytes, &errResp); err == nil && errResp.Message != "" {
 		// return clean API error message
@@ -1134,7 +1135,7 @@ func (wc *WhatsAppController) createAppointment(data *AppointmentData, userID st
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	url := "http://61.2.142.81:8086/api/appointment/create"
+	url := "http://61.2.142.81:8086/api/tempAppointment/create"
 
 	var resp apiAppointmentResponse
 
