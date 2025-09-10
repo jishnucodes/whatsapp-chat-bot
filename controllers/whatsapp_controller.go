@@ -42,17 +42,20 @@ type Post struct {
 }
 
 type AppointmentData struct {
-	PatientID   int
-	PatientCode string
-	Name        string
-	Address     string
-	Phone       string
-	Department  string
-	Date        string
-	Doctor      string
-	Slot        string
-	TimeSlot    string
-	Step        string
+	PatientID       int    `json:"patientId"`
+	PatientCode     string `json:"patientCode"`
+	PatientName     string `json:"patientName"`
+	Address         string `json:"address"`
+	PhoneNumber     string `json:"phoneNumber"`
+	DateOfBirth     string `json:"dateOfBirth"`
+	DepartmentID    uint   `json:"departmentId"`
+	AppointmentDate string `json:"appointmentDate"`
+	DoctorID        uint   `json:"doctorId"`
+	DoctorName      string `json:"doctorName"`
+	OnlineTempToken uint   `json:"onlineTempToken"`
+	TimeSlot        string `json:"timeSlot"`
+	Step            string `json:"step"`
+	CreatedFrom     string `json:"createdFrom"`
 }
 
 var appointmentState = make(map[string]*AppointmentData) // userID → data
@@ -163,8 +166,8 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 		patient := patients[0]
 		state.PatientID = patient.ID
 		state.PatientCode = patient.PatientCode
-		state.Name = fmt.Sprintf("%s %s", patient.FirstName, patient.LastName)
-		state.Phone = patient.MobileNumber
+		state.PatientName = fmt.Sprintf("%s %s", patient.FirstName, patient.LastName)
+		state.PhoneNumber = patient.MobileNumber
 		state.Step = "choose_department"
 
 		_ = wc.sendDepartmentsList(userID)
@@ -187,15 +190,15 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 			// Save only the chosen patient details
 			state.PatientID = patient.ID
 			state.PatientCode = patient.PatientCode
-			state.Name = fmt.Sprintf("%s %s", patient.FirstName, patient.LastName)
-			state.Phone = patient.MobileNumber
+			state.PatientName = fmt.Sprintf("%s %s", patient.FirstName, patient.LastName)
+			state.PhoneNumber = patient.MobileNumber
 			state.Step = "choose_department"
 
 			_ = wc.sendDepartmentsList(userID)
 		}
 
 	case "await_patient_name":
-		state.Name = message.Text.Body
+		state.PatientName = message.Text.Body
 		state.Step = "await_patient_address"
 		_ = wc.whatsappService.SendTextMessage(userID, "🏠 Please enter your address:")
 
@@ -205,38 +208,63 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 		_ = wc.whatsappService.SendTextMessage(userID, "📞 Please enter your phone number:")
 
 	case "await_patient_phone":
-		state.Phone = message.Text.Body
+		state.PhoneNumber = message.Text.Body
 		state.Step = "choose_department"
 		_ = wc.sendDepartmentsList(userID)
 
 	case "choose_department":
 		if message.Type == "interactive" && message.Interactive.ListReply != nil {
-			state.Department = message.Interactive.ListReply.ID
+
+			// Convert ID (string) -> uint
+			idInt, err := strconv.Atoi(message.Interactive.ListReply.ID)
+			if err != nil {
+				log.Println("Invalid ID from WhatsApp:", message.Interactive.ListReply.ID, err)
+			} else {
+				state.DepartmentID = uint(idInt) // ✅ assign to your uint field
+			}
+			// state.DepartmentID = message.Interactive.ListReply.ID
 			state.Step = "await_date"
 			_ = wc.whatsappService.SendTextMessage(userID, "📅 Please enter your preferred date (YYYY-MM-DD):")
 		}
 
 	case "await_date":
-		state.Date = message.Text.Body
+		state.AppointmentDate = message.Text.Body
 		state.Step = "choose_doctor"
-		_ = wc.sendDoctorsList(userID, state.Department, state.Date)
+		_ = wc.sendDoctorsList(userID, state.DepartmentID, state.AppointmentDate)
 
 	case "choose_doctor":
 		if message.Type == "interactive" && message.Interactive.ListReply != nil {
-			state.Doctor = message.Interactive.ListReply.ID
+			// Convert ID (string) -> uint
+			idInt, err := strconv.Atoi(message.Interactive.ListReply.ID)
+			if err != nil {
+				log.Println("Invalid ID from WhatsApp:", message.Interactive.ListReply.ID, err)
+			} else {
+				state.DoctorID = uint(idInt) // ✅ assign to your uint field
+			}
+			// state.DoctorID = message.Interactive.ListReply.ID
+			state.DoctorName = message.Interactive.ListReply.Title
 			state.Step = "choose_slot"
-			_ = wc.sendSlotsList(userID, state.Doctor, state.Date)
+			_ = wc.sendSlotsList(userID, state.DoctorID, state.AppointmentDate)
 		}
 
 	case "choose_slot":
 		if message.Type == "interactive" && message.Interactive.ListReply != nil {
-			state.Slot = message.Interactive.ListReply.ID
+
+			// state.OnlineTempToken = message.Interactive.ListReply.ID
+
+			// Convert ID (string) -> uint
+			idInt, err := strconv.Atoi(message.Interactive.ListReply.ID)
+			if err != nil {
+				log.Println("Invalid ID from WhatsApp:", message.Interactive.ListReply.ID, err)
+			} else {
+				state.OnlineTempToken = uint(idInt) // ✅ assign to your uint field
+			}
 			state.TimeSlot = message.Interactive.ListReply.Title
 			success := wc.createAppointment(state)
 			if success {
 				_ = wc.whatsappService.SendTextMessage(userID,
 					fmt.Sprintf("✅ Appointment booked with Dr. %s on %s at %s",
-						state.Doctor, state.Date, state.Slot))
+						state.DoctorName, state.AppointmentDate, state.TimeSlot))
 			} else {
 				_ = wc.whatsappService.SendTextMessage(userID, "⚠️ Failed to book appointment. Try again later.")
 			}
@@ -472,6 +500,7 @@ type Patient struct {
 	LastName     string `json:"lastName"`
 	DateOfBirth  string `json:"dateOfBirth"`
 	MobileNumber string `json:"mobileNumber"`
+	Address      string `json:"address"`
 }
 
 type apiPatientResponse struct {
@@ -486,6 +515,7 @@ type apiPatientResponse struct {
 		LastName     string `json:"lastName"`
 		DateOfBirth  string `json:"dateOfBirth"`
 		MobileNumber string `json:"mobileNumber"`
+		Address      string `json:"address"`
 	} `json:"data"`
 }
 
@@ -751,6 +781,7 @@ func (wc *WhatsAppController) verifyPatientCode(code string) ([]Patient, error) 
 			LastName:     d.LastName,
 			DateOfBirth:  d.DateOfBirth,
 			MobileNumber: d.MobileNumber,
+			Address:      d.Address,
 		}
 	}
 
@@ -859,19 +890,19 @@ func (wc *WhatsAppController) sendDepartmentsList(userID string) error {
 	return wc.whatsappService.SendInteractiveMessage(userID, interactive)
 }
 
-func (wc *WhatsAppController) sendDoctorsList(userID, dept, date string) error {
+func (wc *WhatsAppController) sendDoctorsList(userID string, dept uint, date string) error {
 	// 🔹 Context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	deptInt, err := strconv.Atoi(dept)
-	if err != nil {
-		return fmt.Errorf("invalid departmentId: %v", err)
-	}
+	// deptInt, err := strconv.Atoi(dept)
+	// if err != nil {
+	// 	return fmt.Errorf("invalid departmentId: %v", err)
+	// }
 
 	url := fmt.Sprintf(
 		"http://61.2.142.81:8086/api/doctor/list?employeeType=%d&departmentId=%d&inputDate=%s",
-		1, deptInt, date,
+		1, dept, date,
 	)
 
 	var apiResp apiDoctorResponse
@@ -943,18 +974,18 @@ func (wc *WhatsAppController) sendDoctorsList(userID, dept, date string) error {
 	return wc.whatsappService.SendInteractiveMessage(userID, interactive)
 }
 
-func (wc *WhatsAppController) sendSlotsList(userID, doctor, date string) error {
+func (wc *WhatsAppController) sendSlotsList(userID string, doctor uint, date string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	doctorInt, err := strconv.Atoi(doctor)
-	if err != nil {
-		return fmt.Errorf("invalid doctorId: %v", err)
-	}
+	// doctorInt, err := strconv.Atoi(doctor)
+	// if err != nil {
+	// 	return fmt.Errorf("invalid doctorId: %v", err)
+	// }
 
 	url := fmt.Sprintf(
 		"http://61.2.142.81:8086/api/doctorAvailability/byDate?doctorId=%d&inputDate=%s",
-		doctorInt, date,
+		doctor, date,
 	)
 
 	var apiResp apiDoctorAvailabilityResponse
@@ -991,9 +1022,19 @@ func (wc *WhatsAppController) sendSlotsList(userID, doctor, date string) error {
 
 		rows := []models.ListItem{}
 		for j, slot := range allSlots[i:end] {
+			// Parse slot assuming it's "15:04" (24hr format string)
+			t, err := time.Parse("15:04", slot)
+			if err != nil {
+				log.Println("Error parsing slot time:", slot, err)
+				continue
+			}
+
+			// Format to 12hr with AM/PM
+			formattedSlot := t.Format("03:04 PM")
+
 			rows = append(rows, models.ListItem{
 				ID:    strconv.Itoa(i + j + 1),
-				Title: slot,
+				Title: formattedSlot,
 			})
 		}
 
