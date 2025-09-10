@@ -239,6 +239,9 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 				_ = wc.whatsappService.SendTextMessage(userID, "⚠️ Failed to book appointment. Try again later.")
 			}
 
+			log.Println("Appointment state: ", appointmentState)
+			log.Println("Appointment state: ", state)
+
 			delete(appointmentState, userID)
 			_ = wc.sendMainMenu(userID)
 		}
