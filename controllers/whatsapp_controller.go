@@ -153,7 +153,22 @@ func callExternalAPICallForPost[T any](ctx context.Context, method, url string, 
 		return fmt.Errorf("failed to parse API response: %w", err)
 	}
 
-	return nil
+	// ❌ Handle error JSON
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	var errResp struct {
+		Status     bool   `json:"status"`
+		StatusCode int    `json:"statusCode"`
+		Message    string `json:"message"`
+	}
+	if err := json.Unmarshal(bodyBytes, &errResp); err == nil && errResp.Message != "" {
+		// return clean API error message
+		return fmt.Errorf(errResp.Message)
+	}
+
+	// fallback if JSON not parsable
+	return fmt.Errorf("API error: %s (status %d)", string(bodyBytes), resp.StatusCode)
+
+	// return nil
 }
 
 
@@ -1119,26 +1134,40 @@ func (wc *WhatsAppController) createAppointment(data *AppointmentData, userID st
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	url := "http://61.2.142.81:8086/api/tempAppointment/create" // 👈 replace with actual endpoint
+	url := "http://61.2.142.81:8086/api/appointment/create"
 
 	var resp apiAppointmentResponse
 
 	err := callExternalAPICallForPost(ctx, http.MethodPost, url, data, &resp)
 	if err != nil {
+		// ❌ Send the exact error back to user
+		_ = wc.whatsappService.SendTextMessage(userID,
+			fmt.Sprintf("⚠️ Appointment could not be created: %s", err.Error()))
+
 		log.Println("❌ Appointment API error:", err)
+		delete(appointmentState, userID)
+		_ = wc.sendMainMenu(userID)
 		return false
 	}
 
 	if !resp.Status {
+		// ❌ Handle logical failure from API (even if status 200/201)
+		_ = wc.whatsappService.SendTextMessage(userID,
+			fmt.Sprintf("⚠️ Appointment failed: %s", resp.Message))
+
 		log.Printf("❌ Appointment creation failed: %s", resp.Message)
 		delete(appointmentState, userID)
 		_ = wc.sendMainMenu(userID)
 		return false
 	}
 
+	// ✅ Success
 	log.Printf("✅ Appointment created successfully: %+v", resp)
+	_ = wc.whatsappService.SendTextMessage(userID,
+		"✅ Appointment created successfully!")
 	return true
 }
+
 
 
 // ========================
