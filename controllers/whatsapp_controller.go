@@ -263,6 +263,11 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 
 	case "await_patient_phone":
 		state.PhoneNumber = message.Text.Body
+		state.Step = "await_patient_dateOfBirth"
+		_ = wc.whatsappService.SendTextMessage(userID, "📅 Please enter your date of birth (YYYY-MM-DD):")
+
+	case "await_patient_dateOfBirth":
+		state.DateOfBirth = message.Text.Body
 		state.Step = "choose_department"
 		_ = wc.sendDepartmentsList(userID)
 
