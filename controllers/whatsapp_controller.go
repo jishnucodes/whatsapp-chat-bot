@@ -51,6 +51,7 @@ type AppointmentData struct {
 	Date        string
 	Doctor      string
 	Slot        string
+	TimeSlot    string
 	Step        string
 }
 
@@ -230,6 +231,7 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 	case "choose_slot":
 		if message.Type == "interactive" && message.Interactive.ListReply != nil {
 			state.Slot = message.Interactive.ListReply.ID
+			state.TimeSlot = message.Interactive.ListReply.Title
 			success := wc.createAppointment(state)
 			if success {
 				_ = wc.whatsappService.SendTextMessage(userID,
@@ -240,7 +242,8 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 			}
 
 			log.Println("Appointment state: ", appointmentState)
-			log.Println("Appointment state: ", state)
+			b, _ := json.MarshalIndent(state, "", "  ")
+			log.Println("Appointment state: ", string(b))
 
 			delete(appointmentState, userID)
 			_ = wc.sendMainMenu(userID)
