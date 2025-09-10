@@ -163,6 +163,7 @@ func callExternalAPICallForPost[T any](ctx context.Context, method, url string, 
 		Error      string `json:"error"`
 	}
 	if err := json.Unmarshal(bodyBytes, &errResp); err == nil {
+		log.Println("error Response: ", errResp)
 		if errResp.Message != "" {
 			log.Println("Error in appointment message: ", errResp.Message)
 			return errors.New(errResp.Message) // ✅ only return message
