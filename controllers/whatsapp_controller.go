@@ -647,6 +647,15 @@ type apiAppointmentResponse struct {
 	} `json:"data"`
 }
 
+type SlotState struct {
+    Slots    []string
+    Page     int
+    PageSize int
+}
+
+var slotState = make(map[string]*SlotState) // userID → state
+
+
 func truncate(str string, max int) string {
 	if len(str) <= max {
 		return str
@@ -1049,6 +1058,103 @@ func (wc *WhatsAppController) sendDoctorsList(userID string, dept uint, date str
 	return wc.whatsappService.SendInteractiveMessage(userID, interactive)
 }
 
+// func (wc *WhatsAppController) sendSlotsList(userID string, doctor uint, date string) error {
+// 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+// 	defer cancel()
+
+// 	url := fmt.Sprintf(
+// 		"http://61.2.142.81:8086/api/doctorAvailability/byDate?doctorId=%d&inputDate=%s",
+// 		doctor, date,
+// 	)
+
+// 	var apiResp apiDoctorAvailabilityResponse
+// 	if err := callExternalAPI(ctx, url, &apiResp); err != nil {
+// 		log.Println("API fetching error", err)
+// 		return err
+// 	}
+
+// 	// Collect all FREE slots
+// 	allSlots := []string{}
+// 	for _, avail := range apiResp.Data {
+// 		// 1. Generate all slots from available range
+// 		slots, err := generateTimeSlots(avail.AvailableTimeStart, avail.AvailableTimeEnd)
+// 		if err != nil {
+// 			log.Println("Error generating slots:", err)
+// 			continue
+// 		}
+
+// 		// 2. Create map of booked slots for quick lookup
+// 		booked := make(map[string]bool)
+// 		for _, b := range avail.BookedSlots {
+// 			booked[b.TimeSlot] = true
+// 		}
+
+// 		// 3. Keep only slots that are NOT booked
+// 		for _, s := range slots {
+// 			// Reformat slot so it matches API booked format (e.g., "09:00 AM")
+// 			t, err := time.Parse("15:04", s)
+// 			if err != nil {
+// 				log.Println("Error parsing slot time:", s, err)
+// 				continue
+// 			}
+// 			formatted := t.Format("03:04 PM")
+
+// 			if !booked[formatted] {
+// 				allSlots = append(allSlots, formatted)
+// 			}
+// 		}
+// 	}
+
+// 	// No free slots
+// 	if len(allSlots) == 0 {
+// 		_ = wc.whatsappService.SendTextMessage(userID, "❌ No available slots found for this doctor.")
+// 		delete(appointmentState, userID)
+// 		_ = wc.sendMainMenu(userID)
+// 		return nil
+// 	}
+
+// 	// 🔹 Paginate: send one message per 10 slots
+// 	pageSize := 10
+// 	for i := 0; i < len(allSlots); i += pageSize {
+// 		end := i + pageSize
+// 		if end > len(allSlots) {
+// 			end = len(allSlots)
+// 		}
+
+// 		rows := []models.ListItem{}
+// 		for j, slot := range allSlots[i:end] {
+// 			rows = append(rows, models.ListItem{
+// 				ID:    strconv.Itoa(i + j + 1),
+// 				Title: slot, // already formatted
+// 			})
+// 		}
+
+// 		section := models.Section{Title: fmt.Sprintf("Slots %d - %d", i+1, end), Rows: rows}
+
+// 		interactive := &models.InteractiveMessage{
+// 			Type: "list",
+// 			Header: &models.MessageHeader{
+// 				Type: "text",
+// 				Text: "⏰ Available Time Slots",
+// 			},
+// 			Body: &models.InteractiveBody{
+// 				Text: fmt.Sprintf("Please choose a time slot (Page %d):", (i/pageSize)+1),
+// 			},
+// 			Action: &models.InteractiveAction{
+// 				Button:   "Choose Slot",
+// 				Sections: []models.Section{section},
+// 			},
+// 		}
+
+// 		// send each page separately
+// 		if err := wc.whatsappService.SendInteractiveMessage(userID, interactive); err != nil {
+// 			return err
+// 		}
+// 	}
+
+// 	return nil
+// }
+
 func (wc *WhatsAppController) sendSlotsList(userID string, doctor uint, date string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -1067,84 +1173,94 @@ func (wc *WhatsAppController) sendSlotsList(userID string, doctor uint, date str
 	// Collect all FREE slots
 	allSlots := []string{}
 	for _, avail := range apiResp.Data {
-		// 1. Generate all slots from available range
 		slots, err := generateTimeSlots(avail.AvailableTimeStart, avail.AvailableTimeEnd)
 		if err != nil {
 			log.Println("Error generating slots:", err)
 			continue
 		}
 
-		// 2. Create map of booked slots for quick lookup
 		booked := make(map[string]bool)
 		for _, b := range avail.BookedSlots {
 			booked[b.TimeSlot] = true
 		}
 
-		// 3. Keep only slots that are NOT booked
 		for _, s := range slots {
-			// Reformat slot so it matches API booked format (e.g., "09:00 AM")
 			t, err := time.Parse("15:04", s)
 			if err != nil {
-				log.Println("Error parsing slot time:", s, err)
 				continue
 			}
 			formatted := t.Format("03:04 PM")
-
 			if !booked[formatted] {
 				allSlots = append(allSlots, formatted)
 			}
 		}
 	}
 
-	// No free slots
 	if len(allSlots) == 0 {
 		_ = wc.whatsappService.SendTextMessage(userID, "❌ No available slots found for this doctor.")
-		delete(appointmentState, userID)
-		_ = wc.sendMainMenu(userID)
+		delete(slotState, userID)
 		return nil
 	}
 
-	// 🔹 Paginate: send one message per 10 slots
-	pageSize := 10
-	for i := 0; i < len(allSlots); i += pageSize {
-		end := i + pageSize
-		if end > len(allSlots) {
-			end = len(allSlots)
-		}
-
-		rows := []models.ListItem{}
-		for j, slot := range allSlots[i:end] {
-			rows = append(rows, models.ListItem{
-				ID:    strconv.Itoa(i + j + 1),
-				Title: slot, // already formatted
-			})
-		}
-
-		section := models.Section{Title: fmt.Sprintf("Slots %d - %d", i+1, end), Rows: rows}
-
-		interactive := &models.InteractiveMessage{
-			Type: "list",
-			Header: &models.MessageHeader{
-				Type: "text",
-				Text: "⏰ Available Time Slots",
-			},
-			Body: &models.InteractiveBody{
-				Text: fmt.Sprintf("Please choose a time slot (Page %d):", (i/pageSize)+1),
-			},
-			Action: &models.InteractiveAction{
-				Button:   "Choose Slot",
-				Sections: []models.Section{section},
-			},
-		}
-
-		// send each page separately
-		if err := wc.whatsappService.SendInteractiveMessage(userID, interactive); err != nil {
-			return err
-		}
+	// Save state for user
+	slotState[userID] = &SlotState{
+		Slots:    allSlots,
+		Page:     0,
+		PageSize: 10,
 	}
 
-	return nil
+	// Send first page
+	return wc.sendSlotPage(userID)
 }
+
+func (wc *WhatsAppController) sendSlotPage(userID string) error {
+	state, ok := slotState[userID]
+	if !ok {
+		return wc.whatsappService.SendTextMessage(userID, "⚠ No slots available.")
+	}
+
+	start := state.Page * state.PageSize
+	if start >= len(state.Slots) {
+		_ = wc.whatsappService.SendTextMessage(userID, "✅ No more slots.")
+		delete(slotState, userID)
+		return nil
+	}
+
+	end := start + state.PageSize
+	if end > len(state.Slots) {
+		end = len(state.Slots)
+	}
+
+	rows := []models.ListItem{}
+	for i, slot := range state.Slots[start:end] {
+		rows = append(rows, models.ListItem{
+			ID:    strconv.Itoa(start + i + 1),
+			Title: slot,
+		})
+	}
+
+	section := models.Section{Title: fmt.Sprintf("Slots %d - %d", start+1, end), Rows: rows}
+
+	interactive := &models.InteractiveMessage{
+		Type: "list",
+		Header: &models.MessageHeader{
+			Type: "text",
+			Text: "⏰ Available Time Slots",
+		},
+		Body: &models.InteractiveBody{
+			Text: fmt.Sprintf("Page %d of %d", state.Page+1, (len(state.Slots)+state.PageSize-1)/state.PageSize),
+		},
+		Action: &models.InteractiveAction{
+			Button:   "Choose Slot",
+			Sections: []models.Section{section},
+		},
+	}
+
+	state.Page++ // next time, show the next page
+
+	return wc.whatsappService.SendInteractiveMessage(userID, interactive)
+}
+
 
 
 func (wc *WhatsAppController) createAppointment(data *AppointmentData, userID string) bool {
