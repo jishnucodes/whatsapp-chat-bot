@@ -334,7 +334,7 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 			success := wc.createAppointment(state, userID)
 			if success {
 				_ = wc.whatsappService.SendTextMessage(userID,
-					fmt.Sprintf("✅ Appointment booked with Dr. %s on %s at %s",
+					fmt.Sprintf("✅ Appointment booked with %s on %s at %s",
 						state.DoctorName, state.AppointmentDate, state.TimeSlot))
 			} else {
 				_ = wc.whatsappService.SendTextMessage(userID, "⚠️ Failed to book appointment. Try again later.")
