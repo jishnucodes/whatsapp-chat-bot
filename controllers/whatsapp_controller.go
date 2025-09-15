@@ -311,13 +311,13 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 			selectedID := message.Interactive.ListReply.ID
 			selectedTitle := message.Interactive.ListReply.Title
 
-			// ✅ Handle "More Slots" pagination
+			// 🔹 Handle pagination
 			if selectedID == "more" {
 				if slotState[userID] != nil {
-					slotState[userID].Page++
-					_ = wc.sendSlotPage(userID) // Send next batch
-					return
+					slotState[userID].Page++    // move to next page
+					_ = wc.sendSlotPage(userID) // show next batch
 				}
+				return
 			}
 
 			// state.OnlineTempToken = message.Interactive.ListReply.ID
@@ -1229,14 +1229,17 @@ func (wc *WhatsAppController) sendSlotPage(userID string) error {
 		return wc.whatsappService.SendTextMessage(userID, "⚠ No slots available.")
 	}
 
-	start := state.Page * state.PageSize
+	// Always reserve space for "Next Slots"
+	pageSize := 9
+
+	start := state.Page * pageSize
 	if start >= len(state.Slots) {
 		_ = wc.whatsappService.SendTextMessage(userID, "✅ No more slots.")
 		delete(slotState, userID)
 		return nil
 	}
 
-	end := start + state.PageSize
+	end := start + pageSize
 	if end > len(state.Slots) {
 		end = len(state.Slots)
 	}
@@ -1249,7 +1252,7 @@ func (wc *WhatsAppController) sendSlotPage(userID string) error {
 		})
 	}
 
-	// Add "Next Slots" option if more pages exist
+	// Add "Next Slots" row only if more remain
 	if end < len(state.Slots) {
 		rows = append(rows, models.ListItem{
 			ID:    "more",
@@ -1262,6 +1265,8 @@ func (wc *WhatsAppController) sendSlotPage(userID string) error {
 		Rows:  rows,
 	}
 
+	totalPages := (len(state.Slots) + pageSize - 1) / pageSize
+
 	interactive := &models.InteractiveMessage{
 		Type: "list",
 		Header: &models.MessageHeader{
@@ -1269,11 +1274,7 @@ func (wc *WhatsAppController) sendSlotPage(userID string) error {
 			Text: "⏰ Available Time Slots",
 		},
 		Body: &models.InteractiveBody{
-			Text: fmt.Sprintf(
-				"Page %d of %d",
-				state.Page+1,
-				(len(state.Slots)+state.PageSize-1)/state.PageSize,
-			),
+			Text: fmt.Sprintf("Page %d of %d", state.Page+1, totalPages),
 		},
 		Action: &models.InteractiveAction{
 			Button:   "Choose Slot",
@@ -1281,7 +1282,6 @@ func (wc *WhatsAppController) sendSlotPage(userID string) error {
 		},
 	}
 
-	// Don’t increment page here yet — only after user presses "➡ Next Slots"
 	return wc.whatsappService.SendInteractiveMessage(userID, interactive)
 }
 
