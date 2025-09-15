@@ -169,7 +169,6 @@ func callExternalAPICallForPost[T any](ctx context.Context, method, url string, 
 	return fmt.Errorf("API error: %s (status %d)", string(bodyBytes), resp.StatusCode)
 }
 
-
 func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID string, message models.WhatsAppMessage) {
 	state, exists := appointmentState[userID]
 	if !exists {
@@ -309,6 +308,18 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 	case "choose_slot":
 		if message.Type == "interactive" && message.Interactive.ListReply != nil {
 
+			selectedID := message.Interactive.ListReply.ID
+			selectedTitle := message.Interactive.ListReply.Title
+
+			// ✅ Handle "More Slots" pagination
+			if selectedID == "more" {
+				if slotState[userID] != nil {
+					slotState[userID].Page++
+					_ = wc.sendSlotPage(userID) // Send next batch
+					return
+				}
+			}
+
 			// state.OnlineTempToken = message.Interactive.ListReply.ID
 
 			// Convert ID (string) -> uint
@@ -318,7 +329,7 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 			} else {
 				state.OnlineTempToken = uint(idInt) // ✅ assign to your uint field
 			}
-			state.TimeSlot = message.Interactive.ListReply.Title
+			state.TimeSlot = selectedTitle
 			state.CreatedFrom = message.From
 			success := wc.createAppointment(state, userID)
 			if success {
@@ -612,16 +623,16 @@ type apiDoctorResponse struct {
 }
 
 type BookedSlotDTO struct {
-    TimeSlot string `json:"timeSlot"`
+	TimeSlot string `json:"timeSlot"`
 }
 
 type Availability struct {
-	ID        int    `json:"availabilityId"`
-	DayOfWeek string `json:"dayOfWeek"`
-	WeekType  string `json:"weekType"`
-	Start     string `json:"availableTimeStart"`
-	End       string `json:"availableTimeEnd"`
-	BookedSlots        []BookedSlotDTO `json:"bookedSlots"`
+	ID          int             `json:"availabilityId"`
+	DayOfWeek   string          `json:"dayOfWeek"`
+	WeekType    string          `json:"weekType"`
+	Start       string          `json:"availableTimeStart"`
+	End         string          `json:"availableTimeEnd"`
+	BookedSlots []BookedSlotDTO `json:"bookedSlots"`
 }
 
 type apiDoctorAvailabilityResponse struct {
@@ -629,11 +640,11 @@ type apiDoctorAvailabilityResponse struct {
 	StatusCode int    `json:"statusCode"`
 	Message    string `json:"message"`
 	Data       []struct {
-		DayOfWeek          string `json:"dayOfWeek"`
-		WeekType           string `json:"weekType"`
-		AvailabilityID     int    `json:"availabilityId"`
-		AvailableTimeStart string `json:"availableTimeStart"`
-		AvailableTimeEnd   string `json:"availableTimeEnd"`
+		DayOfWeek          string          `json:"dayOfWeek"`
+		WeekType           string          `json:"weekType"`
+		AvailabilityID     int             `json:"availabilityId"`
+		AvailableTimeStart string          `json:"availableTimeStart"`
+		AvailableTimeEnd   string          `json:"availableTimeEnd"`
 		BookedSlots        []BookedSlotDTO `json:"bookedSlots"`
 	} `json:"data"`
 }
@@ -648,13 +659,12 @@ type apiAppointmentResponse struct {
 }
 
 type SlotState struct {
-    Slots    []string
-    Page     int
-    PageSize int
+	Slots    []string
+	Page     int
+	PageSize int
 }
 
 var slotState = make(map[string]*SlotState) // userID → state
-
 
 func truncate(str string, max int) string {
 	if len(str) <= max {
@@ -1239,7 +1249,18 @@ func (wc *WhatsAppController) sendSlotPage(userID string) error {
 		})
 	}
 
-	section := models.Section{Title: fmt.Sprintf("Slots %d - %d", start+1, end), Rows: rows}
+	// Add "Next Slots" option if more pages exist
+	if end < len(state.Slots) {
+		rows = append(rows, models.ListItem{
+			ID:    "more",
+			Title: "➡ Next Slots",
+		})
+	}
+
+	section := models.Section{
+		Title: fmt.Sprintf("Slots %d - %d", start+1, end),
+		Rows:  rows,
+	}
 
 	interactive := &models.InteractiveMessage{
 		Type: "list",
@@ -1248,7 +1269,11 @@ func (wc *WhatsAppController) sendSlotPage(userID string) error {
 			Text: "⏰ Available Time Slots",
 		},
 		Body: &models.InteractiveBody{
-			Text: fmt.Sprintf("Page %d of %d", state.Page+1, (len(state.Slots)+state.PageSize-1)/state.PageSize),
+			Text: fmt.Sprintf(
+				"Page %d of %d",
+				state.Page+1,
+				(len(state.Slots)+state.PageSize-1)/state.PageSize,
+			),
 		},
 		Action: &models.InteractiveAction{
 			Button:   "Choose Slot",
@@ -1256,12 +1281,57 @@ func (wc *WhatsAppController) sendSlotPage(userID string) error {
 		},
 	}
 
-	state.Page++ // next time, show the next page
-
+	// Don’t increment page here yet — only after user presses "➡ Next Slots"
 	return wc.whatsappService.SendInteractiveMessage(userID, interactive)
 }
 
+// func (wc *WhatsAppController) sendSlotPage(userID string) error {
+// 	state, ok := slotState[userID]
+// 	if !ok {
+// 		return wc.whatsappService.SendTextMessage(userID, "⚠ No slots available.")
+// 	}
 
+// 	start := state.Page * state.PageSize
+// 	if start >= len(state.Slots) {
+// 		_ = wc.whatsappService.SendTextMessage(userID, "✅ No more slots.")
+// 		delete(slotState, userID)
+// 		return nil
+// 	}
+
+// 	end := start + state.PageSize
+// 	if end > len(state.Slots) {
+// 		end = len(state.Slots)
+// 	}
+
+// 	rows := []models.ListItem{}
+// 	for i, slot := range state.Slots[start:end] {
+// 		rows = append(rows, models.ListItem{
+// 			ID:    strconv.Itoa(start + i + 1),
+// 			Title: slot,
+// 		})
+// 	}
+
+// 	section := models.Section{Title: fmt.Sprintf("Slots %d - %d", start+1, end), Rows: rows}
+
+// 	interactive := &models.InteractiveMessage{
+// 		Type: "list",
+// 		Header: &models.MessageHeader{
+// 			Type: "text",
+// 			Text: "⏰ Available Time Slots",
+// 		},
+// 		Body: &models.InteractiveBody{
+// 			Text: fmt.Sprintf("Page %d of %d", state.Page+1, (len(state.Slots)+state.PageSize-1)/state.PageSize),
+// 		},
+// 		Action: &models.InteractiveAction{
+// 			Button:   "Choose Slot",
+// 			Sections: []models.Section{section},
+// 		},
+// 	}
+
+// 	state.Page++ // next time, show the next page
+
+// 	return wc.whatsappService.SendInteractiveMessage(userID, interactive)
+// }
 
 func (wc *WhatsAppController) createAppointment(data *AppointmentData, userID string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
