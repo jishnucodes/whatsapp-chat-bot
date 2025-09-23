@@ -402,8 +402,10 @@ func (wc *WhatsAppController) HandleWebhook(c *gin.Context) {
 
 	if err := c.ShouldBindJSON(&webhookData); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid webhook data"})
+		log.Println("webhook data binding error", err)
 		return
 	}
+
 
 	// Get context for processing
 	ctx := c.Request.Context()
