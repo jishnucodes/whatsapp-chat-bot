@@ -49,6 +49,7 @@ func NewWhatsAppService() *WhatsAppService {
 
 // GetVerifyToken returns the webhook verification token
 func (ws *WhatsAppService) GetVerifyToken() string {
+    log.Println("Verify token: ", ws.verifyToken)
     return ws.verifyToken
 }
 
