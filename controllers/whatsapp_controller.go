@@ -353,26 +353,50 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 }
 
 // VerifyWebhook handles the webhook verification request from WhatsApp
+// func (wc *WhatsAppController) VerifyWebhook(c *gin.Context) {
+// 	mode := c.Query("hub.mode")
+// 	token := c.Query("hub.verify_token")
+// 	challenge := c.Query("hub.challenge")
+
+// 	log.Println("token from whatsApp: ", token)
+// 	log.Println("mode from whatsApp: ", mode)
+// 	log.Println("challenge from whatsApp: ", challenge)
+
+// 	log.Println("Appointment state: ", appointmentState)
+// 	b, _ := json.MarshalIndent(appointmentState, "", "  ")
+// 	log.Println("Appointment state: ", string(b))
+
+// 	if mode == "subscribe" && token == wc.whatsappService.GetVerifyToken() {
+// 		c.String(http.StatusOK, challenge)
+// 		return
+// 	}
+
+// 	c.JSON(http.StatusForbidden, gin.H{"error": "Verification failed"})
+// }
+
 func (wc *WhatsAppController) VerifyWebhook(c *gin.Context) {
 	mode := c.Query("hub.mode")
 	token := c.Query("hub.verify_token")
 	challenge := c.Query("hub.challenge")
 
-	log.Println("token from whatsApp: ", token)
-	log.Println("mode from whatsApp: ", mode)
-	log.Println("challenge from whatsApp: ", challenge)
+	log.Println("token from WhatsApp:", token)
+	log.Println("mode from WhatsApp:", mode)
+	log.Println("challenge from WhatsApp:", challenge)
 
-	log.Println("Appointment state: ", appointmentState)
-	b, _ := json.MarshalIndent(appointmentState, "", "  ")
-	log.Println("Appointment state: ", string(b))
-
-	if mode == "subscribe" && token == wc.whatsappService.GetVerifyToken() {
+	if mode == "subscribe" {
+		if token != wc.whatsappService.GetVerifyToken() {
+			log.Println("Verification failed: token mismatch")
+			c.JSON(http.StatusForbidden, gin.H{"error": "Token mismatch"})
+			return
+		}
 		c.String(http.StatusOK, challenge)
 		return
 	}
 
+	log.Println("Verification failed: invalid mode or missing query params")
 	c.JSON(http.StatusForbidden, gin.H{"error": "Verification failed"})
 }
+
 
 // func (wc *WhatsAppController) VerifyWebhook(c *gin.Context) {
 //     // Debug full request
@@ -397,25 +421,76 @@ func (wc *WhatsAppController) VerifyWebhook(c *gin.Context) {
 
 
 // HandleWebhook processes incoming WhatsApp messages
+// func (wc *WhatsAppController) HandleWebhook(c *gin.Context) {
+// 	var webhookData models.WhatsAppWebhookData
+
+// 	if err := c.ShouldBindJSON(&webhookData); err != nil {
+// 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid webhook data"})
+// 		log.Println("webhook data binding error", err)
+// 		return
+// 	}
+
+
+// 	// Get context for processing
+// 	ctx := c.Request.Context()
+
+// 	// Process webhook asynchronously to respond quickly
+// 	go wc.processWebhookData(ctx, webhookData)
+
+// 	// Respond immediately to WhatsApp
+// 	c.JSON(http.StatusOK, gin.H{"status": "received"})
+// }
+
 func (wc *WhatsAppController) HandleWebhook(c *gin.Context) {
-	var webhookData models.WhatsAppWebhookData
+    var webhookData models.WhatsAppWebhookData
 
-	if err := c.ShouldBindJSON(&webhookData); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid webhook data"})
-		log.Println("webhook data binding error", err)
-		return
-	}
+    // Log incoming raw body for debugging
+    bodyBytes, err := c.GetRawData()
+    if err != nil {
+        log.Println("[Webhook] Error reading raw body:", err)
+    } else {
+        log.Println("[Webhook] Raw body received:", string(bodyBytes))
+    }
 
+    // Bind JSON into struct
+    if err := c.ShouldBindJSON(&webhookData); err != nil {
+        log.Println("[Webhook] Error binding JSON:", err)
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid webhook data"})
+        return
+    }
 
-	// Get context for processing
-	ctx := c.Request.Context()
+    // Log parsed webhook data
+    b, err := json.MarshalIndent(webhookData, "", "  ")
+    if err != nil {
+        log.Println("[Webhook] Error marshalling webhook data:", err)
+    } else {
+        log.Println("[Webhook] Parsed webhook data:", string(b))
+    }
 
-	// Process webhook asynchronously to respond quickly
-	go wc.processWebhookData(ctx, webhookData)
+    // Log request headers (sometimes useful for debugging)
+    headers, _ := json.MarshalIndent(c.Request.Header, "", "  ")
+    log.Println("[Webhook] Request headers:", string(headers))
 
-	// Respond immediately to WhatsApp
-	c.JSON(http.StatusOK, gin.H{"status": "received"})
+    // Log request metadata
+    log.Println("[Webhook] Remote IP:", c.ClientIP())
+    log.Println("[Webhook] Method:", c.Request.Method)
+    log.Println("[Webhook] URL:", c.Request.URL.String())
+
+    // Get context for processing
+    ctx := c.Request.Context()
+
+    // Process webhook asynchronously to respond quickly
+    go func() {
+        log.Println("[Webhook] Processing webhook data asynchronously")
+		wc.processWebhookData(ctx, webhookData)
+		log.Println("[Webhook] Webhook data processed successfully")
+    }()
+
+    // Respond immediately to WhatsApp
+    log.Println("[Webhook] Sending immediate 200 OK response")
+    c.JSON(http.StatusOK, gin.H{"status": "received"})
 }
+
 
 // processWebhookData processes the webhook data
 func (wc *WhatsAppController) processWebhookData(ctx context.Context, webhookData models.WhatsAppWebhookData) {
