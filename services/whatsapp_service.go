@@ -35,7 +35,7 @@ type WhatsAppService struct {
 func NewWhatsAppService() *WhatsAppService {
     return &WhatsAppService{
         apiURL:        "https://graph.facebook.com",
-        apiVersion: "v22.0",
+        apiVersion: "v18.0",
         accessToken:   os.Getenv("WHATSAPP_ACCESS_TOKEN"),
         phoneNumberID: os.Getenv("WHATSAPP_PHONE_NUMBER_ID"),
         businessID:    os.Getenv("WHATSAPP_BUSINESS_ID"),
@@ -132,51 +132,118 @@ func (ws *WhatsAppService) sendMessage(message models.WhatsAppSendMessage) error
     return ws.sendRequest(message)
 }
 
-// sendRequest sends HTTP request to WhatsApp API
+// Update sendRequest with better error logging
 func (ws *WhatsAppService) sendRequest(payload interface{}) error {
     url := fmt.Sprintf("%s/%s/%s/messages", ws.apiURL, ws.apiVersion, ws.phoneNumberID)
     
+    // Log the URL being called
+    log.Printf("Sending request to: %s", url)
+    
     jsonPayload, err := json.Marshal(payload)
     if err != nil {
+        log.Printf("Failed to marshal payload: %v", err)
         return fmt.Errorf("failed to marshal payload: %w", err)
     }
     
+    // Log the payload being sent
+    log.Printf("Request payload: %s", string(jsonPayload))
+    
     req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
     if err != nil {
-        log.Println("failed to create request: %w", err)
+        log.Printf("Failed to create request: %v", err)
         return fmt.Errorf("failed to create request: %w", err)
     }
     
+    // Log headers
     req.Header.Set("Authorization", "Bearer "+ws.accessToken)
     req.Header.Set("Content-Type", "application/json")
+    log.Printf("Using access token: %v", ws.accessToken != "")
     
     resp, err := ws.httpClient.Do(req)
     if err != nil {
-        log.Println("failed to send request: %w", err)
+        log.Printf("Failed to send request: %v", err)
         return fmt.Errorf("failed to send request: %w", err)
     }
     defer resp.Body.Close()
     
     body, err := io.ReadAll(resp.Body)
     if err != nil {
-        log.Println("failed to read response: %w", err)
+        log.Printf("Failed to read response: %v", err)
         return fmt.Errorf("failed to read response: %w", err)
     }
+    
+    // Always log the response
+    log.Printf("Response status: %d", resp.StatusCode)
+    log.Printf("Response body: %s", string(body))
     
     if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
         var errorResp map[string]interface{}
         if err := json.Unmarshal(body, &errorResp); err == nil {
-            log.Println("WhatsApp API error: ", errorResp)
+            log.Printf("WhatsApp API error details: %+v", errorResp)
+            
+            // Check for specific error codes
+            if errData, ok := errorResp["error"].(map[string]interface{}); ok {
+                if code, ok := errData["code"].(float64); ok {
+                    log.Printf("Error code: %v", code)
+                }
+                if message, ok := errData["message"].(string); ok {
+                    log.Printf("Error message: %s", message)
+                }
+            }
             return fmt.Errorf("WhatsApp API error: %v", errorResp)
         }
         return fmt.Errorf("WhatsApp API error: %s", string(body))
     }
     
-    // Update status
     ws.updateMessageStatus()
-    
     return nil
 }
+
+// sendRequest sends HTTP request to WhatsApp API
+// func (ws *WhatsAppService) sendRequest(payload interface{}) error {
+//     url := fmt.Sprintf("%s/%s/%s/messages", ws.apiURL, ws.apiVersion, ws.phoneNumberID)
+    
+//     jsonPayload, err := json.Marshal(payload)
+//     if err != nil {
+//         return fmt.Errorf("failed to marshal payload: %w", err)
+//     }
+    
+//     req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
+//     if err != nil {
+//         log.Println("failed to create request: %w", err)
+//         return fmt.Errorf("failed to create request: %w", err)
+//     }
+    
+//     req.Header.Set("Authorization", "Bearer "+ws.accessToken)
+//     req.Header.Set("Content-Type", "application/json")
+    
+//     resp, err := ws.httpClient.Do(req)
+//     if err != nil {
+//         log.Println("failed to send request: %w", err)
+//         return fmt.Errorf("failed to send request: %w", err)
+//     }
+//     defer resp.Body.Close()
+    
+//     body, err := io.ReadAll(resp.Body)
+//     if err != nil {
+//         log.Println("failed to read response: %w", err)
+//         return fmt.Errorf("failed to read response: %w", err)
+//     }
+    
+//     if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+//         var errorResp map[string]interface{}
+//         if err := json.Unmarshal(body, &errorResp); err == nil {
+//             log.Println("WhatsApp API error: ", errorResp)
+//             return fmt.Errorf("WhatsApp API error: %v", errorResp)
+//         }
+//         return fmt.Errorf("WhatsApp API error: %s", string(body))
+//     }
+    
+//     // Update status
+//     ws.updateMessageStatus()
+    
+//     return nil
+// }
 
 // SendMediaMessage sends media (image, document, etc.)
 func (ws *WhatsAppService) SendMediaMessage(to string, mediaType string, mediaURL string, caption string) error {
