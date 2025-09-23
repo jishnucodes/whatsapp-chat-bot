@@ -362,6 +362,10 @@ func (wc *WhatsAppController) VerifyWebhook(c *gin.Context) {
 	log.Println("mode from whatsApp: ", mode)
 	log.Println("challenge from whatsApp: ", challenge)
 
+	log.Println("Appointment state: ", appointmentState)
+	b, _ := json.MarshalIndent(appointmentState, "", "  ")
+	log.Println("Appointment state: ", string(b))
+
 	if mode == "subscribe" && token == wc.whatsappService.GetVerifyToken() {
 		c.String(http.StatusOK, challenge)
 		return
