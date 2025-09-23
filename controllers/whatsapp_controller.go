@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+
 	// "errors"
 
 	// "errors"
@@ -17,6 +18,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/httputil"
 	"strings"
 
 	"clinic-chatbot-backend/models"
@@ -351,22 +353,44 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 }
 
 // VerifyWebhook handles the webhook verification request from WhatsApp
+// func (wc *WhatsAppController) VerifyWebhook(c *gin.Context) {
+// 	mode := c.Query("hub.mode")
+// 	token := c.Query("hub.verify_token")
+// 	challenge := c.Query("hub.challenge")
+
+// 	log.Println("token from whatsApp: ", token)
+// 	log.Println("mode from whatsApp: ", mode)
+// 	log.Println("challenge from whatsApp: ", challenge)
+
+// 	if mode == "subscribe" && token == wc.whatsappService.GetVerifyToken() {
+// 		c.String(http.StatusOK, challenge)
+// 		return
+// 	}
+
+// 	c.JSON(http.StatusForbidden, gin.H{"error": "Verification failed"})
+// }
+
 func (wc *WhatsAppController) VerifyWebhook(c *gin.Context) {
-	mode := c.Query("hub.mode")
-	token := c.Query("hub.verify_token")
-	challenge := c.Query("hub.challenge")
+    // Debug full request
+    dump, _ := httputil.DumpRequest(c.Request, true)
+    log.Println("Incoming Request:\n", string(dump))
 
-	log.Println("token from whatsApp: ", token)
-	log.Println("mode from whatsApp: ", mode)
-	log.Println("challenge from whatsApp: ", challenge)
+    mode := c.Query("hub.mode")
+    token := c.Query("hub.verify_token")
+    challenge := c.Query("hub.challenge")
 
-	if mode == "subscribe" && token == wc.whatsappService.GetVerifyToken() {
-		c.String(http.StatusOK, challenge)
-		return
-	}
+    log.Println("token from whatsApp: ", token)
+    log.Println("mode from whatsApp: ", mode)
+    log.Println("challenge from whatsApp: ", challenge)
 
-	c.JSON(http.StatusForbidden, gin.H{"error": "Verification failed"})
+    if mode == "subscribe" && token == wc.whatsappService.GetVerifyToken() {
+        c.String(http.StatusOK, challenge)
+        return
+    }
+
+    c.JSON(http.StatusForbidden, gin.H{"error": "Verification failed"})
 }
+
 
 // HandleWebhook processes incoming WhatsApp messages
 func (wc *WhatsAppController) HandleWebhook(c *gin.Context) {
