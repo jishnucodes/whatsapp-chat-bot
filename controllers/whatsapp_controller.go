@@ -421,75 +421,75 @@ func (wc *WhatsAppController) VerifyWebhook(c *gin.Context) {
 
 
 // HandleWebhook processes incoming WhatsApp messages
-// func (wc *WhatsAppController) HandleWebhook(c *gin.Context) {
-// 	var webhookData models.WhatsAppWebhookData
-
-// 	if err := c.ShouldBindJSON(&webhookData); err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid webhook data"})
-// 		log.Println("webhook data binding error", err)
-// 		return
-// 	}
-
-
-// 	// Get context for processing
-// 	ctx := c.Request.Context()
-
-// 	// Process webhook asynchronously to respond quickly
-// 	go wc.processWebhookData(ctx, webhookData)
-
-// 	// Respond immediately to WhatsApp
-// 	c.JSON(http.StatusOK, gin.H{"status": "received"})
-// }
-
 func (wc *WhatsAppController) HandleWebhook(c *gin.Context) {
-    var webhookData models.WhatsAppWebhookData
+	var webhookData models.WhatsAppWebhookData
 
-    // Log incoming raw body for debugging
-    bodyBytes, err := c.GetRawData()
-    if err != nil {
-        log.Println("[Webhook] Error reading raw body:", err)
-    } else {
-        log.Println("[Webhook] Raw body received:", string(bodyBytes))
-    }
+	if err := c.ShouldBindJSON(&webhookData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid webhook data"})
+		log.Println("webhook data binding error", err)
+		return
+	}
 
-    // Bind JSON into struct
-    if err := c.ShouldBindJSON(&webhookData); err != nil {
-        log.Println("[Webhook] Error binding JSON:", err)
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid webhook data"})
-        return
-    }
 
-    // Log parsed webhook data
-    b, err := json.MarshalIndent(webhookData, "", "  ")
-    if err != nil {
-        log.Println("[Webhook] Error marshalling webhook data:", err)
-    } else {
-        log.Println("[Webhook] Parsed webhook data:", string(b))
-    }
+	// Get context for processing
+	ctx := c.Request.Context()
 
-    // Log request headers (sometimes useful for debugging)
-    headers, _ := json.MarshalIndent(c.Request.Header, "", "  ")
-    log.Println("[Webhook] Request headers:", string(headers))
+	// Process webhook asynchronously to respond quickly
+	go wc.processWebhookData(ctx, webhookData)
 
-    // Log request metadata
-    log.Println("[Webhook] Remote IP:", c.ClientIP())
-    log.Println("[Webhook] Method:", c.Request.Method)
-    log.Println("[Webhook] URL:", c.Request.URL.String())
-
-    // Get context for processing
-    ctx := c.Request.Context()
-
-    // Process webhook asynchronously to respond quickly
-    go func() {
-        log.Println("[Webhook] Processing webhook data asynchronously")
-		wc.processWebhookData(ctx, webhookData)
-		log.Println("[Webhook] Webhook data processed successfully")
-    }()
-
-    // Respond immediately to WhatsApp
-    log.Println("[Webhook] Sending immediate 200 OK response")
-    c.JSON(http.StatusOK, gin.H{"status": "received"})
+	// Respond immediately to WhatsApp
+	c.JSON(http.StatusOK, gin.H{"status": "received"})
 }
+
+// func (wc *WhatsAppController) HandleWebhook(c *gin.Context) {
+//     var webhookData models.WhatsAppWebhookData
+
+//     // Log incoming raw body for debugging
+//     bodyBytes, err := c.GetRawData()
+//     if err != nil {
+//         log.Println("[Webhook] Error reading raw body:", err)
+//     } else {
+//         log.Println("[Webhook] Raw body received:", string(bodyBytes))
+//     }
+
+//     // Bind JSON into struct
+//     if err := c.ShouldBindJSON(&webhookData); err != nil {
+//         log.Println("[Webhook] Error binding JSON:", err)
+//         c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid webhook data"})
+//         return
+//     }
+
+//     // Log parsed webhook data
+//     b, err := json.MarshalIndent(webhookData, "", "  ")
+//     if err != nil {
+//         log.Println("[Webhook] Error marshalling webhook data:", err)
+//     } else {
+//         log.Println("[Webhook] Parsed webhook data:", string(b))
+//     }
+
+//     // Log request headers (sometimes useful for debugging)
+//     headers, _ := json.MarshalIndent(c.Request.Header, "", "  ")
+//     log.Println("[Webhook] Request headers:", string(headers))
+
+//     // Log request metadata
+//     log.Println("[Webhook] Remote IP:", c.ClientIP())
+//     log.Println("[Webhook] Method:", c.Request.Method)
+//     log.Println("[Webhook] URL:", c.Request.URL.String())
+
+//     // Get context for processing
+//     ctx := c.Request.Context()
+
+//     // Process webhook asynchronously to respond quickly
+//     go func() {
+//         log.Println("[Webhook] Processing webhook data asynchronously")
+// 		wc.processWebhookData(ctx, webhookData)
+// 		log.Println("[Webhook] Webhook data processed successfully")
+//     }()
+
+//     // Respond immediately to WhatsApp
+//     log.Println("[Webhook] Sending immediate 200 OK response")
+//     c.JSON(http.StatusOK, gin.H{"status": "received"})
+// }
 
 
 // processWebhookData processes the webhook data
