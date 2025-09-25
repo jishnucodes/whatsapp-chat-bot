@@ -292,20 +292,41 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 		state.Step = "choose_doctor"
 		_ = wc.sendDoctorsList(userID, state.DepartmentID, state.AppointmentDate)
 
+	// case "choose_doctor":
+	// 	if message.Type == "interactive" && message.Interactive.ListReply != nil {
+	// 		// Convert ID (string) -> uint
+	// 		idInt, err := strconv.Atoi(message.Interactive.ListReply.ID)
+	// 		if err != nil {
+	// 			log.Println("Invalid ID from WhatsApp:", message.Interactive.ListReply.ID, err)
+	// 		} else {
+	// 			state.DoctorID = uint(idInt) // ✅ assign to your uint field
+	// 		}
+	// 		// state.DoctorID = message.Interactive.ListReply.ID
+	// 		state.DoctorName = message.Interactive.ListReply.Title
+	// 		state.Step = "choose_slot"
+	// 		_ = wc.sendSlotsList(userID, state.DoctorID, state.AppointmentDate)
+	// 	}
+
 	case "choose_doctor":
-		if message.Type == "interactive" && message.Interactive.ListReply != nil {
-			// Convert ID (string) -> uint
-			idInt, err := strconv.Atoi(message.Interactive.ListReply.ID)
-			if err != nil {
-				log.Println("Invalid ID from WhatsApp:", message.Interactive.ListReply.ID, err)
-			} else {
-				state.DoctorID = uint(idInt) // ✅ assign to your uint field
-			}
-			// state.DoctorID = message.Interactive.ListReply.ID
-			state.DoctorName = message.Interactive.ListReply.Title
-			state.Step = "choose_slot"
-			_ = wc.sendSlotsList(userID, state.DoctorID, state.AppointmentDate)
+	if message.Type == "interactive" && message.Interactive.ListReply != nil {
+		idInt, err := strconv.Atoi(message.Interactive.ListReply.ID)
+		if err != nil {
+			log.Println("Invalid ID from WhatsApp:", message.Interactive.ListReply.ID, err)
+		} else {
+			state.DoctorID = uint(idInt)
 		}
+		state.DoctorName = message.Interactive.ListReply.Title
+
+		// check slots
+		hasSlots, _ := wc.sendSlotsList(userID, state.DoctorID, state.AppointmentDate)
+		if hasSlots {
+			state.Step = "choose_slot"
+		} else {
+			// reset appointment state
+			delete(appointmentState, userID)
+		}
+	}
+
 
 	case "choose_slot":
 		if message.Type == "interactive" && message.Interactive.ListReply != nil {
@@ -1188,7 +1209,66 @@ func (wc *WhatsAppController) sendDoctorsList(userID string, dept uint, date str
 	return wc.whatsappService.SendInteractiveMessage(userID, interactive)
 }
 
-func (wc *WhatsAppController) sendSlotsList(userID string, doctor uint, date string) error {
+// func (wc *WhatsAppController) sendSlotsList(userID string, doctor uint, date string) error {
+// 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+// 	defer cancel()
+
+// 	url := fmt.Sprintf(
+// 		"http://61.2.142.81:8082/api/doctorAvailability/byDate?doctorId=%d&inputDate=%s",
+// 		doctor, date,
+// 	)
+
+// 	var apiResp apiDoctorAvailabilityResponse
+// 	if err := callExternalAPI(ctx, url, &apiResp); err != nil {
+// 		log.Println("API fetching error", err)
+// 		return err
+// 	}
+
+// 	// Collect all FREE slots
+// 	allSlots := []string{}
+// 	for _, avail := range apiResp.Data {
+// 		slots, err := generateTimeSlots(avail.AvailableTimeStart, avail.AvailableTimeEnd)
+// 		if err != nil {
+// 			log.Println("Error generating slots:", err)
+// 			continue
+// 		}
+
+// 		booked := make(map[string]bool)
+// 		for _, b := range avail.BookedSlots {
+// 			booked[b.TimeSlot] = true
+// 		}
+
+// 		for _, s := range slots {
+// 			t, err := time.Parse("15:04", s)
+// 			if err != nil {
+// 				continue
+// 			}
+// 			formatted := t.Format("03:04 PM")
+// 			if !booked[formatted] {
+// 				allSlots = append(allSlots, formatted)
+// 			}
+// 		}
+// 	}
+
+// 	if len(allSlots) == 0 {
+// 		_ = wc.whatsappService.SendTextMessage(userID, "❌ No available slots found for this doctor.")
+// 		delete(slotState, userID)
+// 		_ = wc.sendMainMenu(userID)
+// 		return nil
+// 	}
+
+// 	// Save state for user
+// 	slotState[userID] = &SlotState{
+// 		Slots:    allSlots,
+// 		Page:     0,
+// 		PageSize: 10,
+// 	}
+
+// 	// Send first page
+// 	return wc.sendSlotPage(userID)
+// }
+
+func (wc *WhatsAppController) sendSlotsList(userID string, doctor uint, date string) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
@@ -1200,7 +1280,7 @@ func (wc *WhatsAppController) sendSlotsList(userID string, doctor uint, date str
 	var apiResp apiDoctorAvailabilityResponse
 	if err := callExternalAPI(ctx, url, &apiResp); err != nil {
 		log.Println("API fetching error", err)
-		return err
+		return false, err
 	}
 
 	// Collect all FREE slots
@@ -1232,7 +1312,8 @@ func (wc *WhatsAppController) sendSlotsList(userID string, doctor uint, date str
 	if len(allSlots) == 0 {
 		_ = wc.whatsappService.SendTextMessage(userID, "❌ No available slots found for this doctor.")
 		delete(slotState, userID)
-		return nil
+		_ = wc.sendMainMenu(userID)
+		return false, nil // ❌ no slots
 	}
 
 	// Save state for user
@@ -1243,8 +1324,13 @@ func (wc *WhatsAppController) sendSlotsList(userID string, doctor uint, date str
 	}
 
 	// Send first page
-	return wc.sendSlotPage(userID)
+	if err := wc.sendSlotPage(userID); err != nil {
+		return false, err
+	}
+
+	return true, nil // ✅ slots available
 }
+
 
 func (wc *WhatsAppController) sendSlotPage(userID string) error {
 	state, ok := slotState[userID]
