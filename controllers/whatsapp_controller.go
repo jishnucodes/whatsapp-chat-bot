@@ -870,7 +870,7 @@ func (wc *WhatsAppController) fetchAppointments(phone string) ([]Appointment, er
 			Doctor:      d.DoctorID,
 			PatientName: d.PatientName,
 			DoctorName:  d.DoctorName,
-			Date:        t.Format("2006-01-02"),
+			Date:        t.Format("Jan 02, 2006"),
 			Time:        timeStr,
 		}
 	}
@@ -897,11 +897,15 @@ func (wc *WhatsAppController) sendAppointmentsList(to string, appointments []App
 		// 	"📅 Appointment Details\n\nDoctor: Dr. %s\nDate: %s\nTime: %s",
 		// 	appt.DoctorName, appt.Date, appt.Time,
 		// )
+		t, err := time.Parse("2006-01-02T15:04:05", appt.Date)
+		if err != nil {
+			return fmt.Errorf("failed to parse appointmentDateTime: %w", err)
+		}
 		msg := fmt.Sprintf(
 			"✨ *Appointment Details*\n\n👤 Patient: %s\n👨‍⚕️ Doctor: %s\n📅 Date: %s\n⏰ Time: %s\n🔢 Token: %d",
 			appt.PatientName,
 			appt.DoctorName,
-			appt.Date,
+			t.Format("Jan 02, 2006"),
 			appt.Time,
 			appt.TokenNumber,
 		)
@@ -911,7 +915,10 @@ func (wc *WhatsAppController) sendAppointmentsList(to string, appointments []App
 	rows := make([]models.ListItem, 0, len(appointments))
 
 	for _, appt := range appointments {
-
+		t, err := time.Parse("2006-01-02T15:04:05", appt.Date)
+		if err != nil {
+			return fmt.Errorf("failed to parse appointmentDate: %w", err)
+		}
 		// Normalize doctor name
 		doctor := appt.DoctorName
 		doctor = strings.TrimSpace(strings.TrimPrefix(doctor, "Dr."))
@@ -922,7 +929,7 @@ func (wc *WhatsAppController) sendAppointmentsList(to string, appointments []App
 			Title: fmt.Sprintf("Patient: %s", appt.PatientName),
 			Description: fmt.Sprintf("Doctor: Dr. %s\nDate: %s",
 				doctor,
-				appt.Date,
+				t.Format("Jan 02, 2006"),
 			),
 		})
 	}
