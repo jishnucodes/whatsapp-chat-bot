@@ -797,60 +797,85 @@ func truncate(str string, max int) string {
 	return str[:max-1] + "…" // add ellipsis
 }
 
-func generateTimeSlots(start, end string) ([]string, error) {
+func generateTimeSlots(start, end string, apptDateStr string) ([]string, error) {
 	layout := "15:04:05"
 
 	log.Println("=== GENERATING TIME SLOTS ===")
 	log.Println("Input Start:", start)
 	log.Println("Input End:", end)
+	log.Println("Appointment Date:", apptDateStr)
 
-	// Parse the time-only values
+	// Parse appointment date
+	apptDate, err := time.Parse("2006-01-02", apptDateStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid appointment date: %w", err)
+	}
+
+	// Parse raw times
 	tStartRaw, err := time.Parse(layout, start)
 	if err != nil {
-		return nil, fmt.Errorf("invalid start time: %w", err)
+		return nil, err
 	}
 	tEndRaw, err := time.Parse(layout, end)
 	if err != nil {
-		return nil, fmt.Errorf("invalid end time: %w", err)
+		return nil, err
 	}
-
-	log.Println("Parsed Raw Start:", tStartRaw)
-	log.Println("Parsed Raw End:", tEndRaw)
 
 	now := time.Now()
 	log.Println("Current Time:", now)
 
-	// Attach today's date to start and end times
-	tStart := time.Date(now.Year(), now.Month(), now.Day(),
-		tStartRaw.Hour(), tStartRaw.Minute(), tStartRaw.Second(), 0, now.Location())
-	tEnd := time.Date(now.Year(), now.Month(), now.Day(),
-		tEndRaw.Hour(), tEndRaw.Minute(), tEndRaw.Second(), 0, now.Location())
+	// Build slot times using appointment date
+	tStart := time.Date(
+		apptDate.Year(), apptDate.Month(), apptDate.Day(),
+		tStartRaw.Hour(), tStartRaw.Minute(), tStartRaw.Second(),
+		0, now.Location(),
+	)
 
-	log.Println("Start with today's date:", tStart)
-	log.Println("End with today's date:", tEnd)
+	tEnd := time.Date(
+		apptDate.Year(), apptDate.Month(), apptDate.Day(),
+		tEndRaw.Hour(), tEndRaw.Minute(), tEndRaw.Second(),
+		0, now.Location(),
+	)
+
+	log.Println("Start with appointment date:", tStart)
+	log.Println("End with appointment date:", tEnd)
 
 	slots := []string{}
 
+	// CASE 1: Appointment date is NOT today → return full slots
+	if apptDate.Format("2006-01-02") != now.Format("2006-01-02") {
+		log.Println("Appointment is NOT today → Return all slots")
+
+		for t := tStart; t.Before(tEnd); t = t.Add(15 * time.Minute) {
+			slots = append(slots, t.Format("15:04"))
+		}
+
+		return slots, nil
+	}
+
+	// CASE 2: Appointment **is today** → filter using current time
+	log.Println("Appointment is today → Filtering past time slots")
+
+	rounded := now.Truncate(15 * time.Minute)
+	if rounded.Before(now) {
+		rounded = rounded.Add(15 * time.Minute)
+	}
+	log.Println("Next allowed slot:", rounded)
+
 	for t := tStart; t.Before(tEnd); t = t.Add(15 * time.Minute) {
+		log.Println("Checking slot:", t.Format("15:04"))
 
-		log.Println("Checking slot:", t)
-
-		// Skip past slots
-		if t.Before(now) {
-			log.Println("⛔ Skipping past slot:", t.Format("15:04"))
+		if t.Before(rounded) {
+			log.Println("⛔ Skip:", t.Format("15:04"))
 			continue
 		}
 
-		log.Println("✅ Adding slot:", t.Format("15:04"))
+		log.Println("✅ Add:", t.Format("15:04"))
 		slots = append(slots, t.Format("15:04"))
 	}
 
-	log.Println("Final Generated Slots:", slots)
-	log.Println("=== END GENERATION ===")
-
 	return slots, nil
 }
-
 
 
 
@@ -1342,7 +1367,7 @@ func (wc *WhatsAppController) sendSlotsList(userID string, doctor uint, date str
 	// Collect all FREE slots
 	allSlots := []string{}
 	for _, avail := range apiResp.Data {
-		slots, err := generateTimeSlots(avail.AvailableTimeStart, avail.AvailableTimeEnd)
+		slots, err := generateTimeSlots(avail.AvailableTimeStart, avail.AvailableTimeEnd, date)
 		if err != nil {
 			log.Println("Error generating slots:", err)
 			continue
