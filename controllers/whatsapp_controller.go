@@ -807,12 +807,30 @@ func generateTimeSlots(start, end string) ([]string, error) {
 		return nil, fmt.Errorf("invalid end time: %w", err)
 	}
 
+	// Current time for comparison (same date, only time part matters)
+	now := time.Now()
+
 	slots := []string{}
 	for t := tStart; t.Before(tEnd); t = t.Add(15 * time.Minute) {
+
+		// Combine today's date with slot time for accurate comparison
+		slotTime := time.Date(
+			now.Year(), now.Month(), now.Day(),
+			t.Hour(), t.Minute(), t.Second(), 0,
+			now.Location(),
+		)
+
+		// Skip if slot is already past
+		if slotTime.Before(now) {
+			continue
+		}
+
 		slots = append(slots, t.Format("15:04"))
 	}
+
 	return slots, nil
 }
+
 
 func chunkSlotsIntoSections(slots []string, title string) []models.Section {
 	sections := []models.Section{}
