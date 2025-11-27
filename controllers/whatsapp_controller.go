@@ -893,9 +893,17 @@ func (wc *WhatsAppController) sendAppointmentsList(to string, appointments []App
 	// 🔹 If only one appointment, just send text message
 	if len(appointments) == 1 {
 		appt := appointments[0]
+		// msg := fmt.Sprintf(
+		// 	"📅 Appointment Details\n\nDoctor: Dr. %s\nDate: %s\nTime: %s",
+		// 	appt.DoctorName, appt.Date, appt.Time,
+		// )
 		msg := fmt.Sprintf(
-			"📅 Appointment Details\n\nDoctor: Dr. %s\nDate: %s\nTime: %s",
-			appt.DoctorName, appt.Date, appt.Time,
+			"✨ *Appointment Details*\n\n👤 Patient: %s\n👨‍⚕️ Doctor: %s\n📅 Date: %s\n⏰ Time: %s\n🔢 Token: %d",
+			appt.PatientName,
+			appt.DoctorName,
+			appt.Date,
+			appt.Time,
+			appt.TokenNumber,
 		)
 		return wc.whatsappService.SendTextMessage(to, msg)
 	}
