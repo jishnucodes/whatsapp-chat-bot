@@ -188,7 +188,7 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 			ans := strings.ToLower(strings.TrimSpace(message.Text.Body))
 			if ans == "yes" {
 				state.Step = "await_patient_code_or_phone_number"
-				_ = wc.whatsappService.SendTextMessage(userID, "📋 Please enter your patient code:")
+				_ = wc.whatsappService.SendTextMessage(userID, "📋 Please enter your patient id or phone number:")
 			} else if ans == "no" {
 				state.Step = "await_patient_name"
 				_ = wc.whatsappService.SendTextMessage(userID, "👤 Please enter your full name:")
