@@ -542,6 +542,7 @@ func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message
 	if message.Type == "text" && message.Text != nil {
 		userText := strings.TrimSpace(strings.ToLower(message.Text.Body))
 		if userText == "hi" || userText == "hello" {
+			delete(appointmentState, userID)
 			_ = wc.sendMainMenu(userID)
 			return
 		}
