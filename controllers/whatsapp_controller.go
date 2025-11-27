@@ -821,7 +821,9 @@ func generateTimeSlots(start, end string, apptDateStr string) ([]string, error) 
 		return nil, err
 	}
 
-	now := time.Now()
+	loc, _ := time.LoadLocation("Asia/Kolkata")
+	now := time.Now().In(loc)
+
 	log.Println("Current Time:", now)
 
 	// Build slot times using appointment date
