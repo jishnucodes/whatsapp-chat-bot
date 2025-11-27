@@ -827,7 +827,10 @@ func generateTimeSlots(start, end string) ([]string, error) {
 		}
 
 		slots = append(slots, t.Format("15:04"))
+
 	}
+	fmt.Println("generated slots", slots)
+	log.Println("generated slots", slots)
 
 	return slots, nil
 }
