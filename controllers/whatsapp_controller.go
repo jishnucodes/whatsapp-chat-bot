@@ -308,25 +308,24 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 	// 	}
 
 	case "choose_doctor":
-	if message.Type == "interactive" && message.Interactive.ListReply != nil {
-		idInt, err := strconv.Atoi(message.Interactive.ListReply.ID)
-		if err != nil {
-			log.Println("Invalid ID from WhatsApp:", message.Interactive.ListReply.ID, err)
-		} else {
-			state.DoctorID = uint(idInt)
-		}
-		state.DoctorName = message.Interactive.ListReply.Title
+		if message.Type == "interactive" && message.Interactive.ListReply != nil {
+			idInt, err := strconv.Atoi(message.Interactive.ListReply.ID)
+			if err != nil {
+				log.Println("Invalid ID from WhatsApp:", message.Interactive.ListReply.ID, err)
+			} else {
+				state.DoctorID = uint(idInt)
+			}
+			state.DoctorName = message.Interactive.ListReply.Title
 
-		// check slots
-		hasSlots, _ := wc.sendSlotsList(userID, state.DoctorID, state.AppointmentDate)
-		if hasSlots {
-			state.Step = "choose_slot"
-		} else {
-			// reset appointment state
-			delete(appointmentState, userID)
+			// check slots
+			hasSlots, _ := wc.sendSlotsList(userID, state.DoctorID, state.AppointmentDate)
+			if hasSlots {
+				state.Step = "choose_slot"
+			} else {
+				// reset appointment state
+				delete(appointmentState, userID)
+			}
 		}
-	}
-
 
 	case "choose_slot":
 		if message.Type == "interactive" && message.Interactive.ListReply != nil {
@@ -418,7 +417,6 @@ func (wc *WhatsAppController) VerifyWebhook(c *gin.Context) {
 	c.JSON(http.StatusForbidden, gin.H{"error": "Verification failed"})
 }
 
-
 // func (wc *WhatsAppController) VerifyWebhook(c *gin.Context) {
 //     // Debug full request
 //     dump, _ := httputil.DumpRequest(c.Request, true)
@@ -440,7 +438,6 @@ func (wc *WhatsAppController) VerifyWebhook(c *gin.Context) {
 //     c.JSON(http.StatusForbidden, gin.H{"error": "Verification failed"})
 // }
 
-
 // HandleWebhook processes incoming WhatsApp messages
 func (wc *WhatsAppController) HandleWebhook(c *gin.Context) {
 	var webhookData models.WhatsAppWebhookData
@@ -450,7 +447,6 @@ func (wc *WhatsAppController) HandleWebhook(c *gin.Context) {
 		log.Println("webhook data binding error", err)
 		return
 	}
-
 
 	// Get context for processing
 	ctx := c.Request.Context()
@@ -511,7 +507,6 @@ func (wc *WhatsAppController) HandleWebhook(c *gin.Context) {
 //     log.Println("[Webhook] Sending immediate 200 OK response")
 //     c.JSON(http.StatusOK, gin.H{"status": "received"})
 // }
-
 
 // processWebhookData processes the webhook data
 func (wc *WhatsAppController) processWebhookData(ctx context.Context, webhookData models.WhatsAppWebhookData) {
@@ -668,6 +663,7 @@ func (wc *WhatsAppController) handleIncomingMessage(ctx context.Context, message
 type Appointment struct {
 	ID          int    `json:"appointmentId"`
 	Doctor      int    `json:"doctorId"` // You can later map this to doctor name if needed
+	PatientName string `json:"patientName"`
 	DoctorName  string `json:"doctorName"`
 	TokenNumber int    `json:"tokenNumber"`
 	Date        string `json:"date"`
@@ -682,6 +678,7 @@ type apiResponse struct {
 	Data       []struct {
 		AppointmentID       int    `json:"appointmentId"`
 		DoctorID            int    `json:"doctorId"`
+		PatientName         string `json:"patientName"`
 		DoctorName          string `json:"doctorName"`
 		AppointmentDateTime string `json:"appointmentDateTime"`
 		TimeSlot            string `json:"timeSlot"`
@@ -845,7 +842,7 @@ func (wc *WhatsAppController) fetchAppointments(phone string) ([]Appointment, er
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	url := fmt.Sprintf("http://61.2.142.81:8086/api/appointment/search?phoneNumber=%s", phone)
+	url := fmt.Sprintf("http://61.2.142.81:8082/api/appointment/search?phoneNumber=%s", phone)
 
 	var apiResp apiResponse
 	if err := callExternalAPI(ctx, url, &apiResp); err != nil {
@@ -871,6 +868,7 @@ func (wc *WhatsAppController) fetchAppointments(phone string) ([]Appointment, er
 		appointments[i] = Appointment{
 			ID:         d.AppointmentID,
 			Doctor:     d.DoctorID,
+			PatientName: d.PatientName,
 			DoctorName: d.DoctorName,
 			Date:       t.Format("2006-01-02"),
 			Time:       timeStr,
@@ -905,10 +903,17 @@ func (wc *WhatsAppController) sendAppointmentsList(to string, appointments []App
 	rows := make([]models.ListItem, 0, len(appointments))
 
 	for _, appt := range appointments {
+
+		// Normalize doctor name
+		doctor := appt.DoctorName
+		doctor = strings.TrimSpace(strings.TrimPrefix(doctor, "Dr."))
+		doctor = strings.TrimSpace(strings.TrimPrefix(doctor, "Dr"))
+
 		rows = append(rows, models.ListItem{
-			ID:          strconv.Itoa(appt.ID),
-			Title:       fmt.Sprintf("Dr. %s", appt.DoctorName),
-			Description: fmt.Sprintf("Date: %s, Time: %s", appt.Date, appt.Time),
+			ID:    strconv.Itoa(appt.ID),
+			Title: appt.PatientName,
+			Description: fmt.Sprintf("Doctor: Dr. %s, Date: %s",
+				doctor, appt.Date),
 		})
 	}
 
@@ -948,7 +953,7 @@ func (wc *WhatsAppController) getAppointmentDetails(apptID string) (string, erro
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	url := fmt.Sprintf("http://61.2.142.81:8086/api/appointment/get-by-id?appointmentId=%s", apptID)
+	url := fmt.Sprintf("http://61.2.142.81:8082/api/appointment/get-by-id?appointmentId=%s", apptID)
 
 	var apiResp apiResponse
 	if err := callExternalAPI(ctx, url, &apiResp); err != nil {
@@ -996,7 +1001,7 @@ func (wc *WhatsAppController) verifyPatientCode(code string) ([]Patient, error) 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	url := fmt.Sprintf("http://61.2.142.81:8086/api/patient/search?userInput=%s", code)
+	url := fmt.Sprintf("http://61.2.142.81:8082/api/patient/search?userInput=%s", code)
 
 	var apiResp apiPatientResponse
 	if err := callExternalAPI(ctx, url, &apiResp); err != nil {
@@ -1081,7 +1086,7 @@ func (wc *WhatsAppController) sendDepartmentsList(userID string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	url := "http://61.2.142.81:8086/api/department/list"
+	url := "http://61.2.142.81:8082/api/department/list"
 
 	var apiResp apiDepartmentResponse
 	if err := callExternalAPI(ctx, url, &apiResp); err != nil {
@@ -1136,7 +1141,7 @@ func (wc *WhatsAppController) sendDoctorsList(userID string, dept uint, date str
 	// }
 
 	url := fmt.Sprintf(
-		"http://61.2.142.81:8086/api/doctor/list?employeeType=%d&departmentId=%d&inputDate=%s",
+		"http://61.2.142.81:8082/api/doctor/list?employeeType=%d&departmentId=%d&inputDate=%s",
 		1, dept, date,
 	)
 
@@ -1273,7 +1278,7 @@ func (wc *WhatsAppController) sendSlotsList(userID string, doctor uint, date str
 	defer cancel()
 
 	url := fmt.Sprintf(
-		"http://61.2.142.81:8086/api/doctorAvailability/byDate?doctorId=%d&inputDate=%s",
+		"http://61.2.142.81:8082/api/doctorAvailability/byDate?doctorId=%d&inputDate=%s",
 		doctor, date,
 	)
 
@@ -1330,7 +1335,6 @@ func (wc *WhatsAppController) sendSlotsList(userID string, doctor uint, date str
 
 	return true, nil // ✅ slots available
 }
-
 
 func (wc *WhatsAppController) sendSlotPage(userID string) error {
 	state, ok := slotState[userID]
@@ -1394,12 +1398,11 @@ func (wc *WhatsAppController) sendSlotPage(userID string) error {
 	return wc.whatsappService.SendInteractiveMessage(userID, interactive)
 }
 
-
 func (wc *WhatsAppController) createAppointment(data *AppointmentData, userID string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	url := "http://61.2.142.81:8086/api/tempAppointment/create"
+	url := "http://61.2.142.81:8082/api/tempAppointment/create"
 
 	var resp apiAppointmentResponse
 
