@@ -911,9 +911,11 @@ func (wc *WhatsAppController) sendAppointmentsList(to string, appointments []App
 
 		rows = append(rows, models.ListItem{
 			ID:    strconv.Itoa(appt.ID),
-			Title: appt.PatientName,
-			Description: fmt.Sprintf("Doctor: Dr. %s, Date: %s",
-				doctor, appt.Date),
+			Title: fmt.Sprintf("Patient: %s", appt.PatientName),
+			Description: fmt.Sprintf("Doctor: Dr. %s\nDate: %s",
+				doctor,
+				appt.Date,
+			),
 		})
 	}
 
@@ -981,10 +983,10 @@ func (wc *WhatsAppController) getAppointmentDetails(apptID string) (string, erro
 
 	// Format a WhatsApp-friendly message
 	msg := fmt.Sprintf(
-		"✅ Appointment Details\n👤 Patient: %s\n👨‍⚕️ Doctor: %s\n📅 Date: %s\n⏰ Time: %s\n🔢 Token: %d",
+		"✨ *Appointment Details*\n\n👤 Patient: %s\n👨‍⚕️ Doctor: %s\n📅 Date: %s\n⏰ Time: %s\n🔢 Token: %d",
 		d.PatientName,
 		d.DoctorName,
-		t.Format("2006-01-02"),
+		t.Format("Jan 02, 2006"), // Oct 25, 2025 format
 		timeStr,
 		d.TokenNumber,
 	)
