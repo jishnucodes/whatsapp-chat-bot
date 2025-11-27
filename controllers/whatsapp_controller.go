@@ -800,6 +800,10 @@ func truncate(str string, max int) string {
 func generateTimeSlots(start, end string) ([]string, error) {
 	layout := "15:04:05"
 
+	log.Println("=== GENERATING TIME SLOTS ===")
+	log.Println("Input Start:", start)
+	log.Println("Input End:", end)
+
 	// Parse the time-only values
 	tStartRaw, err := time.Parse(layout, start)
 	if err != nil {
@@ -810,26 +814,43 @@ func generateTimeSlots(start, end string) ([]string, error) {
 		return nil, fmt.Errorf("invalid end time: %w", err)
 	}
 
+	log.Println("Parsed Raw Start:", tStartRaw)
+	log.Println("Parsed Raw End:", tEndRaw)
+
 	now := time.Now()
+	log.Println("Current Time:", now)
 
 	// Attach today's date to start and end times
-	tStart := time.Date(now.Year(), now.Month(), now.Day(), tStartRaw.Hour(), tStartRaw.Minute(), tStartRaw.Second(), 0, now.Location())
-	tEnd := time.Date(now.Year(), now.Month(), now.Day(), tEndRaw.Hour(), tEndRaw.Minute(), tEndRaw.Second(), 0, now.Location())
+	tStart := time.Date(now.Year(), now.Month(), now.Day(),
+		tStartRaw.Hour(), tStartRaw.Minute(), tStartRaw.Second(), 0, now.Location())
+	tEnd := time.Date(now.Year(), now.Month(), now.Day(),
+		tEndRaw.Hour(), tEndRaw.Minute(), tEndRaw.Second(), 0, now.Location())
+
+	log.Println("Start with today's date:", tStart)
+	log.Println("End with today's date:", tEnd)
 
 	slots := []string{}
 
 	for t := tStart; t.Before(tEnd); t = t.Add(15 * time.Minute) {
 
+		log.Println("Checking slot:", t)
+
 		// Skip past slots
 		if t.Before(now) {
+			log.Println("⛔ Skipping past slot:", t.Format("15:04"))
 			continue
 		}
 
+		log.Println("✅ Adding slot:", t.Format("15:04"))
 		slots = append(slots, t.Format("15:04"))
 	}
 
+	log.Println("Final Generated Slots:", slots)
+	log.Println("=== END GENERATION ===")
+
 	return slots, nil
 }
+
 
 
 
