@@ -866,12 +866,12 @@ func (wc *WhatsAppController) fetchAppointments(phone string) ([]Appointment, er
 		}
 
 		appointments[i] = Appointment{
-			ID:         d.AppointmentID,
-			Doctor:     d.DoctorID,
+			ID:          d.AppointmentID,
+			Doctor:      d.DoctorID,
 			PatientName: d.PatientName,
-			DoctorName: d.DoctorName,
-			Date:       t.Format("2006-01-02"),
-			Time:       timeStr,
+			DoctorName:  d.DoctorName,
+			Date:        t.Format("2006-01-02"),
+			Time:        timeStr,
 		}
 	}
 
@@ -979,9 +979,10 @@ func (wc *WhatsAppController) getAppointmentDetails(apptID string) (string, erro
 		timeStr = t.Format("03:04 PM")
 	}
 
-	// ✅ Format a WhatsApp-friendly message
+	// Format a WhatsApp-friendly message
 	msg := fmt.Sprintf(
-		"✅ Appointment Details\n👨‍⚕️ Doctor: %s\n📅 Date: %s\n⏰ Time: %s\n🔢 Token: %d",
+		"✅ Appointment Details\n👤 Patient: %s\n👨‍⚕️ Doctor: %s\n📅 Date: %s\n⏰ Time: %s\n🔢 Token: %d",
+		d.PatientName,
 		d.DoctorName,
 		t.Format("2006-01-02"),
 		timeStr,
