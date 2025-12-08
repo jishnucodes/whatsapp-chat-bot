@@ -1131,7 +1131,7 @@ func (wc *WhatsAppController) sendPatientDetailsList(to string, patients []Patie
 		rows = append(rows, models.ListItem{
 			ID:          strconv.Itoa(appt.ID),
 			Title:       truncate(fullName, 24), // short for list
-			Description: truncate(fmt.Sprintf("Patient Code: %s | %s", appt.PatientCode, fullName), 72),
+			Description: truncate(fmt.Sprintf("Patient Code: %s", appt.PatientCode), 72),
 		})
 	}
 
