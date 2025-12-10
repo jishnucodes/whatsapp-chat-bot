@@ -355,7 +355,7 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 			state.TimeSlot = selectedTitle
 			state.CreatedFrom = message.From
 			appointmentDate := state.AppointmentDate
-			t, err := time.Parse("2006-01-02T15:04:05", appointmentDate)
+			t, err := time.Parse("2006-01-02", appointmentDate)
 			if err != nil {
 				log.Println("Invalid date from WhatsApp:", appointmentDate, err)
 			}
