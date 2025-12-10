@@ -359,16 +359,17 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 			// 	log.Println("Invalid date from WhatsApp:", state.AppointmentDate, err)
 			// }
 			// state.AppointmentDate = t.Format("Jan 02, 2006")
+			appointmentDate := state.AppointmentDate
 			success := wc.createAppointment(state, userID)
-			t, err := time.Parse("2006-01-02T15:04:05", state.AppointmentDate)
+			t, err := time.Parse("2006-01-02T15:04:05", appointmentDate)
 			if err != nil {
-				log.Println("Invalid date from WhatsApp:", state.AppointmentDate, err)
+				log.Println("Invalid date from WhatsApp:", appointmentDate, err)
 			}
-			state.AppointmentDate = t.Format("Jan 02, 2006")
+			appointmentDate = t.Format("Jan 02, 2006")
 			if success {
 				_ = wc.whatsappService.SendTextMessage(userID,
 					fmt.Sprintf("✅ Appointment booked with %s on %s at %s",
-						state.DoctorName, state.AppointmentDate, state.TimeSlot))
+						state.DoctorName, appointmentDate, state.TimeSlot))
 			} else {
 				_ = wc.whatsappService.SendTextMessage(userID, "⚠️ Failed to book appointment. Try again later.")
 			}
