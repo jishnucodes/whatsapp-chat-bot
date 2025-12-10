@@ -288,6 +288,7 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 		}
 
 	case "await_date":
+		log.Println("appointment date from whatsapp: ", message.Text.Body)
 		state.AppointmentDate = message.Text.Body
 		state.Step = "choose_doctor"
 		_ = wc.sendDoctorsList(userID, state.DepartmentID, state.AppointmentDate)
