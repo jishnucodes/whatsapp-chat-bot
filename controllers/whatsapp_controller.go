@@ -180,7 +180,7 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 		appointmentState[userID] = &AppointmentData{Step: "ask_patient_code_or_phone_number", History: []string{}}
 		_ = wc.whatsappService.SendTextMessage(
 			userID,
-			"🩺 Have you already consulted here before? (Yes/No)\n(Reply 'Cancel' to stop)",
+			"🩺 Have you already consulted here before? (Yes/No)\n_(Reply *Cancel* to stop)_",
 		)
 		return
 	}
@@ -227,11 +227,11 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 			if ans == "yes" {
 				state.History = append(state.History, state.Step)
 				state.Step = "await_patient_code_or_phone_number"
-				_ = wc.whatsappService.SendTextMessage(userID, "📋 Please enter your patient id or phone number:")
+				_ = wc.whatsappService.SendTextMessage(userID, "📋 Please enter your patient id or phone number:\n_(Reply *Back* to go back, *Cancel* to stop)_")
 			} else if ans == "no" {
 				state.History = append(state.History, state.Step)
 				state.Step = "await_patient_name"
-				_ = wc.whatsappService.SendTextMessage(userID, "👤 Please enter your full name:")
+				_ = wc.whatsappService.SendTextMessage(userID, "👤 Please enter your full name:\n_(Reply *Back* to go back, *Cancel* to stop)_")
 			} else {
 				_ = wc.whatsappService.SendTextMessage(userID, "❌ Please reply Yes or No.")
 			}
@@ -310,7 +310,7 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 			state.PatientName = message.Text.Body
 			state.History = append(state.History, state.Step)
 			state.Step = "await_patient_address"
-			_ = wc.whatsappService.SendTextMessage(userID, "🏠 Please enter your address:")
+			_ = wc.whatsappService.SendTextMessage(userID, "🏠 Please enter your address:\n_(Reply *Back* to go back, *Cancel* to stop)_")
 		} else {
 			_ = wc.whatsappService.SendTextMessage(userID, "❌ Please enter your name as text.")
 		}
@@ -320,7 +320,7 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 			state.Address = message.Text.Body
 			state.History = append(state.History, state.Step)
 			state.Step = "await_patient_phone"
-			_ = wc.whatsappService.SendTextMessage(userID, "📞 Please enter your phone number:")
+			_ = wc.whatsappService.SendTextMessage(userID, "📞 Please enter your phone number:\n_(Reply *Back* to go back, *Cancel* to stop)_")
 		} else {
 			_ = wc.whatsappService.SendTextMessage(userID, "❌ Please enter your address as text.")
 		}
@@ -330,7 +330,7 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 			state.PhoneNumber = message.Text.Body
 			state.History = append(state.History, state.Step)
 			state.Step = "await_patient_dateOfBirth"
-			_ = wc.whatsappService.SendTextMessage(userID, "📅 Please enter your date of birth (DD-MM-YYYY):\n(Reply 'Back' to go back, 'Cancel' to stop)")
+			_ = wc.whatsappService.SendTextMessage(userID, "📅 Please enter your date of birth (DD-MM-YYYY):\n_(Reply *Back* to go back, *Cancel* to stop)_")
 		} else {
 			_ = wc.whatsappService.SendTextMessage(userID, "❌ Please enter your phone number as text.")
 		}
@@ -646,22 +646,22 @@ func (wc *WhatsAppController) renderStep(userID string, step string) error {
 
 	switch step {
 	case "ask_patient_code_or_phone_number":
-		return wc.whatsappService.SendTextMessage(userID, "🩺 Have you already consulted here before? (Yes/No)\n(Reply 'Cancel' to stop)")
+		return wc.whatsappService.SendTextMessage(userID, "🩺 Have you already consulted here before? (Yes/No)\n_(Reply *Cancel* to stop)_")
 
 	case "await_patient_code_or_phone_number":
-		return wc.whatsappService.SendTextMessage(userID, "📋 Please enter your patient id or phone number:\n(Reply 'Back' to go back, 'Cancel' to stop)")
+		return wc.whatsappService.SendTextMessage(userID, "📋 Please enter your patient id or phone number:\n_(Reply *Back* to go back, *Cancel* to stop)_")
 
 	case "await_patient_name":
-		return wc.whatsappService.SendTextMessage(userID, "👤 Please enter your full name:\n(Reply 'Back' to go back, 'Cancel' to stop)")
+		return wc.whatsappService.SendTextMessage(userID, "👤 Please enter your full name:\n_(Reply *Back* to go back, *Cancel* to stop)_")
 
 	case "await_patient_address":
-		return wc.whatsappService.SendTextMessage(userID, "🏠 Please enter your address:\n(Reply 'Back' to go back, 'Cancel' to stop)")
+		return wc.whatsappService.SendTextMessage(userID, "🏠 Please enter your address:\n_(Reply *Back* to go back, *Cancel* to stop)_")
 
 	case "await_patient_phone":
-		return wc.whatsappService.SendTextMessage(userID, "📞 Please enter your phone number:\n(Reply 'Back' to go back, 'Cancel' to stop)")
+		return wc.whatsappService.SendTextMessage(userID, "📞 Please enter your phone number:\n_(Reply *Back* to go back, *Cancel* to stop)_")
 
 	case "await_patient_dateOfBirth":
-		return wc.whatsappService.SendTextMessage(userID, "📅 Please enter your date of birth (DD-MM-YYYY):\n(Reply 'Back' to go back, 'Cancel' to stop)")
+		return wc.whatsappService.SendTextMessage(userID, "📅 Please enter your date of birth (DD-MM-YYYY):\n_(Reply *Back* to go back, *Cancel* to stop)_")
 
 	case "choose_patient_from_list":
 		// Fallback: If we go back to this, it implies we need to search again.
