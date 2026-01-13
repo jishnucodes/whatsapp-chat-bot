@@ -330,14 +330,21 @@ func (wc *WhatsAppController) handleNewAppointment(ctx context.Context, userID s
 			state.PhoneNumber = message.Text.Body
 			state.History = append(state.History, state.Step)
 			state.Step = "await_patient_dateOfBirth"
-			_ = wc.whatsappService.SendTextMessage(userID, "📅 Please enter your date of birth (YYYY-MM-DD):")
+			_ = wc.whatsappService.SendTextMessage(userID, "📅 Please enter your date of birth (DD-MM-YYYY):\n(Reply 'Back' to go back, 'Cancel' to stop)")
 		} else {
 			_ = wc.whatsappService.SendTextMessage(userID, "❌ Please enter your phone number as text.")
 		}
 
 	case "await_patient_dateOfBirth":
 		if message.Type == "text" {
-			state.DateOfBirth = message.Text.Body
+			inputDate := strings.TrimSpace(message.Text.Body)
+			t, err := time.Parse("02-01-2006", inputDate)
+			if err != nil {
+				_ = wc.whatsappService.SendTextMessage(userID, "❌ Invalid date format. Please use DD-MM-YYYY (e.g. 15-08-1990).")
+				return
+			}
+			state.DateOfBirth = t.Format("2006-01-02") // Convert to API format (YYYY-MM-DD)
+
 			state.History = append(state.History, state.Step)
 			state.Step = "choose_department"
 			_ = wc.sendDepartmentsList(userID)
@@ -589,7 +596,7 @@ func (wc *WhatsAppController) sendDateList(userID string) error {
 			Text: fmt.Sprintf("Displaying dates %s to %s", rows[0].Title, rows[len(rows)-1].Title),
 		},
 		Footer: &models.InteractiveFooter{
-			Text: "Clinic Support",
+			Text: "Reply 'Back' or 'Cancel'",
 		},
 		Action: &models.InteractiveAction{
 			Button: "Choose Date",
@@ -639,22 +646,22 @@ func (wc *WhatsAppController) renderStep(userID string, step string) error {
 
 	switch step {
 	case "ask_patient_code_or_phone_number":
-		return wc.whatsappService.SendTextMessage(userID, "🩺 Have you already consulted here before? (Yes/No)")
+		return wc.whatsappService.SendTextMessage(userID, "🩺 Have you already consulted here before? (Yes/No)\n(Reply 'Cancel' to stop)")
 
 	case "await_patient_code_or_phone_number":
-		return wc.whatsappService.SendTextMessage(userID, "📋 Please enter your patient id or phone number:")
+		return wc.whatsappService.SendTextMessage(userID, "📋 Please enter your patient id or phone number:\n(Reply 'Back' to go back, 'Cancel' to stop)")
 
 	case "await_patient_name":
-		return wc.whatsappService.SendTextMessage(userID, "👤 Please enter your full name:")
+		return wc.whatsappService.SendTextMessage(userID, "👤 Please enter your full name:\n(Reply 'Back' to go back, 'Cancel' to stop)")
 
 	case "await_patient_address":
-		return wc.whatsappService.SendTextMessage(userID, "🏠 Please enter your address:")
+		return wc.whatsappService.SendTextMessage(userID, "🏠 Please enter your address:\n(Reply 'Back' to go back, 'Cancel' to stop)")
 
 	case "await_patient_phone":
-		return wc.whatsappService.SendTextMessage(userID, "📞 Please enter your phone number:")
+		return wc.whatsappService.SendTextMessage(userID, "📞 Please enter your phone number:\n(Reply 'Back' to go back, 'Cancel' to stop)")
 
 	case "await_patient_dateOfBirth":
-		return wc.whatsappService.SendTextMessage(userID, "📅 Please enter your date of birth (YYYY-MM-DD):")
+		return wc.whatsappService.SendTextMessage(userID, "📅 Please enter your date of birth (DD-MM-YYYY):\n(Reply 'Back' to go back, 'Cancel' to stop)")
 
 	case "choose_patient_from_list":
 		// Fallback: If we go back to this, it implies we need to search again.
@@ -1164,6 +1171,7 @@ func (wc *WhatsAppController) fetchAppointments(phone string) ([]Appointment, er
 			DoctorName:  d.DoctorName,
 			Date:        t.Format("Jan 02, 2006"),
 			Time:        timeStr,
+			TokenNumber: d.TokenNumber,
 		}
 	}
 
@@ -1372,7 +1380,7 @@ func (wc *WhatsAppController) sendPatientDetailsList(to string, patients []Patie
 			Text: "Choose one patient for appointment:",
 		},
 		Footer: &models.InteractiveFooter{
-			Text: "Clinic Support",
+			Text: "Reply 'Back' or 'Cancel'",
 		},
 		Action: &models.InteractiveAction{
 			Button:   "Choose Patient",
@@ -1423,6 +1431,9 @@ func (wc *WhatsAppController) sendDepartmentsList(userID string) error {
 	interactive := &models.InteractiveMessage{
 		Type: "list",
 		Body: &models.InteractiveBody{Text: "Please select a department"},
+		Footer: &models.InteractiveFooter{
+			Text: "Reply 'Back' or 'Cancel'",
+		},
 		Action: &models.InteractiveAction{
 			Button: "Choose",
 			Sections: []models.Section{
@@ -1504,7 +1515,7 @@ func (wc *WhatsAppController) sendDoctorsList(userID string, dept uint, date str
 			Text: "Please select a doctor from the list below:",
 		},
 		Footer: &models.InteractiveFooter{
-			Text: "Clinic Support",
+			Text: "Reply 'Back' or 'Cancel'",
 		},
 		Action: &models.InteractiveAction{
 			Button: "Choose Doctor",
@@ -1686,6 +1697,9 @@ func (wc *WhatsAppController) sendSlotPage(userID string) error {
 		},
 		Body: &models.InteractiveBody{
 			Text: fmt.Sprintf("Page %d of %d", state.Page+1, totalPages),
+		},
+		Footer: &models.InteractiveFooter{
+			Text: "Reply 'Back' or 'Cancel'",
 		},
 		Action: &models.InteractiveAction{
 			Button:   "Choose Slot",
