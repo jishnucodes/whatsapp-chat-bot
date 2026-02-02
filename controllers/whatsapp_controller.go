@@ -1150,7 +1150,7 @@ func (wc *WhatsAppController) fetchAppointments(phone string) ([]Appointment, er
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	url := fmt.Sprintf("http://61.2.142.81:8082/api/appointment/search?phoneNumber=%s", phone)
+	url := fmt.Sprintf("http://61.2.142.81:8086/api/appointment/search?phoneNumber=%s", phone)
 
 	var apiResp apiResponse
 	if err := callExternalAPI(ctx, url, &apiResp); err != nil {
@@ -1272,7 +1272,7 @@ func (wc *WhatsAppController) getAppointmentDetails(apptID string) (string, erro
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	url := fmt.Sprintf("http://61.2.142.81:8082/api/appointment/get-by-id?appointmentId=%s", apptID)
+	url := fmt.Sprintf("http://61.2.142.81:8086/api/appointment/get-by-id?appointmentId=%s", apptID)
 
 	var apiResp apiResponse
 	if err := callExternalAPI(ctx, url, &apiResp); err != nil {
@@ -1321,7 +1321,7 @@ func (wc *WhatsAppController) verifyPatientCode(code string) ([]Patient, error) 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	url := fmt.Sprintf("http://61.2.142.81:8082/api/patient/search?userInput=%s", code)
+	url := fmt.Sprintf("http://61.2.142.81:8086/api/patient/search?userInput=%s", code)
 
 	var apiResp apiPatientResponse
 	if err := callExternalAPI(ctx, url, &apiResp); err != nil {
@@ -1406,7 +1406,7 @@ func (wc *WhatsAppController) sendDepartmentsList(userID string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	url := "http://61.2.142.81:8082/api/department/list"
+	url := "http://61.2.142.81:8086/api/department/list"
 
 	var apiResp apiDepartmentResponse
 	if err := callExternalAPI(ctx, url, &apiResp); err != nil {
@@ -1464,7 +1464,7 @@ func (wc *WhatsAppController) sendDoctorsList(userID string, dept uint, date str
 	// }
 
 	url := fmt.Sprintf(
-		"http://61.2.142.81:8082/api/doctor/list?employeeType=%d&departmentId=%d&inputDate=%s",
+		"http://61.2.142.81:8086/api/doctor/list?employeeType=%d&departmentId=%d&inputDate=%s",
 		1, dept, date,
 	)
 
@@ -1601,7 +1601,7 @@ func (wc *WhatsAppController) sendSlotsList(userID string, doctor uint, date str
 	defer cancel()
 
 	url := fmt.Sprintf(
-		"http://61.2.142.81:8082/api/doctorAvailability/byDate?doctorId=%d&inputDate=%s",
+		"http://61.2.142.81:8086/api/doctorAvailability/byDate?doctorId=%d&inputDate=%s",
 		doctor, date,
 	)
 
@@ -1751,7 +1751,7 @@ func (wc *WhatsAppController) createAppointment(data *AppointmentData, userID st
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	url := "http://61.2.142.81:8082/api/tempAppointment/create"
+	url := "http://61.2.142.81:8086/api/tempAppointment/create"
 
 	var resp apiAppointmentResponse
 
