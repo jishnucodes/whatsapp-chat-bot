@@ -233,11 +233,7 @@ func getEnvAsSlice(key string, defaultValue []string) []string {
 
 func validate() error {
     // Validate required fields
-    if cfg.Database.Type == "mongodb" && cfg.Database.URI == "" {
-        if cfg.Database.Host == "" || cfg.Database.Port == "" {
-            return fmt.Errorf("database URI or host/port must be provided")
-        }
-    }
+    // Database validation is bypassed since database is not needed
     
     if cfg.AI.APIKey == "" {
         return fmt.Errorf("AI API key is required")

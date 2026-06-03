@@ -12,7 +12,6 @@ import (
     
     "github.com/gin-gonic/gin"
     "clinic-chatbot-backend/config"
-    "clinic-chatbot-backend/database"
     "clinic-chatbot-backend/routes"
 )
 
@@ -29,11 +28,8 @@ func main() {
         gin.SetMode(gin.ReleaseMode)
     }
     
-    // Connect to database
-    if err := database.Connect(cfg); err != nil {
-        log.Fatalf("Failed to connect to database: %v", err)
-    }
-    defer database.Disconnect()
+    // Database connection skipped as DB-related operations are not needed
+    log.Println("Database connection skipped (running in stateless mode)")
     
     // Verify WhatsApp configuration
     if err := verifyWhatsAppConfig(); err != nil {
